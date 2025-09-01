@@ -6,40 +6,41 @@ import (
 	"strconv"
 	"time"
 
+	pkgdeps "cinekami-server/pkg/deps"
 	pkghttpx "cinekami-server/pkg/httpx"
 )
 
 // MoviesActive registers GET /movies/active
-func MoviesActive(d Deps) http.HandlerFunc {
+func MoviesActive(d pkgdeps.ServerDeps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		now := time.Now().UTC()
-		cursor := r.URL.Query().Get("cursor")
+		cursor := r.URL.Query().Get("signer")
 		limitStr := r.URL.Query().Get("limit")
 		if limitStr == "" {
 			limitStr = "20"
 		}
 		lim64, err := strconv.ParseInt(limitStr, 10, 32)
 		if err != nil || lim64 <= 0 || lim64 > 100 {
-			writeError(w, r, pkghttpx.BadRequest("invalid limit", err))
+			pkghttpx.WriteError(w, r, pkghttpx.BadRequest("invalid limit", err))
 			return
 		}
 		var curPop *float64
 		var curID *int64
 		if cursor != "" {
 			if d.Signer == nil {
-				writeError(w, r, pkghttpx.Internal("cursor signer not configured", nil))
+				pkghttpx.WriteError(w, r, pkghttpx.Internal("signer signer not configured", nil))
 				return
 			}
-			p, id, decErr := d.Signer.DecodeMovies(cursor)
+			p, id, decErr := d.Signer.DecodeMoviesCursor(cursor)
 			if decErr != nil {
-				writeError(w, r, pkghttpx.BadRequest("invalid cursor", decErr))
+				pkghttpx.WriteError(w, r, pkghttpx.BadRequest("invalid signer", decErr))
 				return
 			}
 			curPop = &p
 			curID = &id
 		}
-		cacheKey := "active_movies:" + now.Format("2006-01") + ":cursor:" + cursor + ":limit:" + strconv.FormatInt(lim64, 10)
+		cacheKey := "active_movies:" + now.Format("2006-01") + ":signer:" + cursor + ":limit:" + strconv.FormatInt(lim64, 10)
 		if cached, ok := d.Cache.Get(ctx, cacheKey); ok {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
@@ -48,18 +49,18 @@ func MoviesActive(d Deps) http.HandlerFunc {
 		}
 		items, err := d.Repo.ListActiveMoviesPage(ctx, now, curPop, curID, int32(lim64))
 		if err != nil {
-			writeError(w, r, pkghttpx.Internal("failed to list active movies", err))
+			pkghttpx.WriteError(w, r, pkghttpx.Internal("failed to list active movies", err))
 			return
 		}
 		total, err := d.Repo.CountActiveMovies(ctx, now)
 		if err != nil {
-			writeError(w, r, pkghttpx.Internal("failed to count active movies", err))
+			pkghttpx.WriteError(w, r, pkghttpx.Internal("failed to count active movies", err))
 			return
 		}
 		var next *string
 		if len(items) == int(lim64) && d.Signer != nil {
 			last := items[len(items)-1]
-			nextVal := d.Signer.EncodeMovies(last.Popularity, last.ID)
+			nextVal := d.Signer.EncodeMoviesCursor(last.Popularity, last.ID)
 			next = &nextVal
 		}
 		resp := map[string]any{

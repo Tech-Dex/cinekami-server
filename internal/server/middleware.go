@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"time"
 
@@ -11,19 +10,6 @@ import (
 
 	pkgrequestctx "cinekami-server/pkg/requestctx"
 )
-
-type errorResp struct {
-	Error string `json:"error"`
-}
-
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
-}
-
-// WriteJSON is an exported helper for writing JSON responses from external packages.
-func WriteJSON(w http.ResponseWriter, status int, v any) { writeJSON(w, status, v) }
 
 // StartHTTP starts the HTTP server and blocks until it stops.
 func StartHTTP(ctx context.Context, addr string, h http.Handler) error {

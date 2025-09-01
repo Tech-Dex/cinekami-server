@@ -19,6 +19,7 @@ import (
 	"cinekami-server/internal/server"
 	"cinekami-server/pkg/cache"
 	pkgdb "cinekami-server/pkg/db"
+	"cinekami-server/pkg/signer"
 	"cinekami-server/pkg/tmdb"
 )
 
@@ -53,7 +54,7 @@ func main() {
 	}
 
 	repository := repos.New(pool)
-	signer := server.NewCursorSigner(cfg.CursorSecret)
+	signer := signer.NewHMAC(cfg.CursorSecret)
 	api := server.New(repository, c, signer)
 
 	// Start background jobs

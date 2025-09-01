@@ -6,28 +6,28 @@ import (
 	"cinekami-server/internal/repos"
 	"cinekami-server/internal/routes"
 	"cinekami-server/pkg/cache"
+	"cinekami-server/pkg/deps"
+	"cinekami-server/pkg/signer"
 )
 
 type Server struct {
-	Repo   *repos.Repository
-	Cache  cache.Cache
-	Signer *CursorSigner
+	deps.ServerDeps
 }
 
-func New(r *repos.Repository, c cache.Cache, signer *CursorSigner) *Server {
-	return &Server{Repo: r, Cache: c, Signer: signer}
+func New(r *repos.Repository, c cache.Cache, signer signer.Codec) *Server {
+	return &Server{ServerDeps: deps.ServerDeps{Repo: r, Cache: c, Signer: signer}}
 }
 
 func (s *Server) Router() http.Handler {
 	mux := http.NewServeMux()
-	deps := routes.Deps{Repo: s.Repo, Cache: s.Cache, Signer: s.Signer}
+	sd := s.ServerDeps
 
 	// Endpoints declared here for easy scanning
-	mux.HandleFunc("GET /health", routes.Health(deps))
-	mux.HandleFunc("GET /movies/active", routes.MoviesActive(deps))
-	mux.HandleFunc("GET /movies/{id}/tallies", routes.MovieTallies(deps))
-	mux.HandleFunc("POST /votes", routes.Vote(deps))
-	mux.HandleFunc("GET /snapshots/{year}/{month}", routes.Snapshots(deps))
+	mux.HandleFunc("GET /health", routes.Health(sd))
+	mux.HandleFunc("GET /movies/active", routes.MoviesActive(sd))
+	mux.HandleFunc("GET /movies/{id}/tallies", routes.MovieTallies(sd))
+	mux.HandleFunc("POST /votes", routes.Vote(sd))
+	mux.HandleFunc("GET /snapshots/{year}/{month}", routes.Snapshots(sd))
 
 	return withCorrelationID(withLogging(mux))
 }

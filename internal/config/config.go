@@ -30,7 +30,7 @@ func FromEnv() Config {
 		TMDBLanguage:   getEnv("TMDB_LANGUAGE", "en-US"),
 		Env:            getEnv("ENV", "development"),
 	}
-	// cursor secret: optional env CURSOR_SECRET as raw bytes base64 or hex? Keep it raw; if empty, generate ephemeral
+	// signer secret: optional env CURSOR_SECRET as raw bytes base64 or hex? Keep it raw; if empty, generate ephemeral
 	if s := os.Getenv("CURSOR_SECRET"); s != "" {
 		c.CursorSecret = []byte(s)
 	} else {
@@ -38,7 +38,7 @@ func FromEnv() Config {
 		if _, err := rand.Read(buf); err == nil {
 			c.CursorSecret = buf
 		} else {
-			log.Printf("warning: failed to generate cursor secret: %v", err)
+			log.Printf("warning: failed to generate signer secret: %v", err)
 			c.CursorSecret = []byte("insecure-default")
 		}
 	}

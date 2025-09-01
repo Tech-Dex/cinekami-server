@@ -7,10 +7,11 @@ import (
 
 	"cinekami-server/internal/server"
 	"cinekami-server/pkg/cache"
+	"cinekami-server/pkg/signer"
 )
 
 func TestHealth(t *testing.T) {
-	signer := server.NewCursorSigner([]byte("test-secret"))
+	signer := signer.NewHMAC([]byte("test-secret"))
 	s := server.New(nil, cache.NewInMemory(), signer)
 	r := s.Router()
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
