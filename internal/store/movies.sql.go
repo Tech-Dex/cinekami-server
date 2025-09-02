@@ -15,11 +15,35 @@ const CountActiveMovies = `-- name: CountActiveMovies :one
 SELECT COUNT(*)
 FROM movies
 WHERE release_date >= date_trunc('month', $1::timestamptz)::date
+  AND release_date <= (date_trunc('month', $1::timestamptz)::date + interval '1 month - 1 second')
   AND $1::timestamptz <= (release_date + interval '14 days')
 `
 
 func (q *Queries) CountActiveMovies(ctx context.Context, dollar_1 pgtype.Timestamptz) (int64, error) {
 	row := q.db.QueryRow(ctx, CountActiveMovies, dollar_1)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const CountActiveMoviesFiltered = `-- name: CountActiveMoviesFiltered :one
+SELECT COUNT(*)
+FROM movies
+WHERE release_date >= date_trunc('month', $1::timestamptz)::date
+  AND release_date <= (date_trunc('month', $1::timestamptz)::date + interval '1 month - 1 second')
+  AND $1::timestamptz <= (release_date + interval '14 days')
+  AND ($2::float8 IS NULL OR popularity >= $2)
+  AND ($3::float8 IS NULL OR popularity <= $3)
+`
+
+type CountActiveMoviesFilteredParams struct {
+	Column1 pgtype.Timestamptz `json:"column_1"`
+	Column2 float64            `json:"column_2"`
+	Column3 float64            `json:"column_3"`
+}
+
+func (q *Queries) CountActiveMoviesFiltered(ctx context.Context, arg CountActiveMoviesFilteredParams) (int64, error) {
+	row := q.db.QueryRow(ctx, CountActiveMoviesFiltered, arg.Column1, arg.Column2, arg.Column3)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -49,10 +73,132 @@ func (q *Queries) HasAnyMovies(ctx context.Context) (bool, error) {
 	return exists, err
 }
 
+const ListActiveMoviesFilteredPage = `-- name: ListActiveMoviesFilteredPage :many
+WITH base AS (
+  SELECT id, title, release_date, overview, poster_path, backdrop_path, popularity
+  FROM movies
+  WHERE release_date >= date_trunc('month', $1::timestamptz)::date
+    AND release_date <= (date_trunc('month', $1::timestamptz)::date + interval '1 month - 1 second')
+    AND $1::timestamptz <= (release_date + interval '14 days')
+    AND ($2::float8 IS NULL OR popularity >= $2)
+    AND ($3::float8 IS NULL OR popularity <= $3)
+), t AS (
+  SELECT movie_id,
+         SUM(CASE WHEN category = 'solo_friends' THEN count ELSE 0 END)::bigint AS solo_friends,
+         SUM(CASE WHEN category = 'couple' THEN count ELSE 0 END)::bigint AS couple,
+         SUM(CASE WHEN category = 'streaming' THEN count ELSE 0 END)::bigint AS streaming,
+         SUM(CASE WHEN category = 'arr' THEN count ELSE 0 END)::bigint AS arr
+  FROM vote_tallies
+  GROUP BY movie_id
+), joined AS (
+  SELECT b.id, b.title, b.release_date, b.overview, b.poster_path, b.backdrop_path, b.popularity, COALESCE(t.solo_friends,0) AS solo_friends, COALESCE(t.couple,0) AS couple, COALESCE(t.streaming,0) AS streaming, COALESCE(t.arr,0) AS arr
+  FROM base b LEFT JOIN t ON t.movie_id = b.id
+), keyed AS (
+  SELECT id, title, release_date, overview, poster_path, backdrop_path, popularity, solo_friends, couple, streaming, arr, CASE
+      WHEN $4::text = 'popularity' THEN popularity
+      WHEN $4::text = 'release_date' THEN extract(epoch from release_date)
+      WHEN $4::text = 'solo_friends' THEN solo_friends::double precision
+      WHEN $4::text = 'couple' THEN couple::double precision
+      WHEN $4::text = 'streaming' THEN streaming::double precision
+      WHEN $4::text = 'arr' THEN arr::double precision
+      ELSE popularity
+    END AS key_value
+  FROM joined
+), paged AS (
+  SELECT id, title, release_date, overview, poster_path, backdrop_path, popularity, solo_friends, couple, streaming, arr, key_value FROM keyed
+  WHERE (
+    $6::float8 IS NULL OR (
+      CASE WHEN $5::text = 'desc'
+           THEN (key_value < $6 OR (key_value = $6 AND id < $7))
+           ELSE (key_value > $6 OR (key_value = $6 AND id > $7))
+      END
+    )
+  )
+)
+SELECT id, title, release_date, overview, poster_path, backdrop_path, popularity,
+       solo_friends, couple, streaming, arr, key_value
+FROM paged
+ORDER BY
+  CASE WHEN $5::text = 'desc' THEN key_value END DESC NULLS LAST,
+  CASE WHEN $5::text = 'asc'  THEN key_value END ASC  NULLS LAST,
+  CASE WHEN $5::text = 'desc' THEN id END DESC NULLS LAST,
+  CASE WHEN $5::text = 'asc'  THEN id END ASC  NULLS LAST
+LIMIT $8
+`
+
+type ListActiveMoviesFilteredPageParams struct {
+	Column1 pgtype.Timestamptz `json:"column_1"`
+	Column2 float64            `json:"column_2"`
+	Column3 float64            `json:"column_3"`
+	Column4 string             `json:"column_4"`
+	Column5 string             `json:"column_5"`
+	Column6 float64            `json:"column_6"`
+	ID      int64              `json:"id"`
+	Limit   int32              `json:"limit"`
+}
+
+type ListActiveMoviesFilteredPageRow struct {
+	ID           int64         `json:"id"`
+	Title        string        `json:"title"`
+	ReleaseDate  pgtype.Date   `json:"release_date"`
+	Overview     pgtype.Text   `json:"overview"`
+	PosterPath   pgtype.Text   `json:"poster_path"`
+	BackdropPath pgtype.Text   `json:"backdrop_path"`
+	Popularity   pgtype.Float8 `json:"popularity"`
+	SoloFriends  int64         `json:"solo_friends"`
+	Couple       int64         `json:"couple"`
+	Streaming    int64         `json:"streaming"`
+	Arr          int64         `json:"arr"`
+	KeyValue     interface{}   `json:"key_value"`
+}
+
+func (q *Queries) ListActiveMoviesFilteredPage(ctx context.Context, arg ListActiveMoviesFilteredPageParams) ([]ListActiveMoviesFilteredPageRow, error) {
+	rows, err := q.db.Query(ctx, ListActiveMoviesFilteredPage,
+		arg.Column1,
+		arg.Column2,
+		arg.Column3,
+		arg.Column4,
+		arg.Column5,
+		arg.Column6,
+		arg.ID,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListActiveMoviesFilteredPageRow{}
+	for rows.Next() {
+		var i ListActiveMoviesFilteredPageRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.ReleaseDate,
+			&i.Overview,
+			&i.PosterPath,
+			&i.BackdropPath,
+			&i.Popularity,
+			&i.SoloFriends,
+			&i.Couple,
+			&i.Streaming,
+			&i.Arr,
+			&i.KeyValue,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const ListActiveMoviesPage = `-- name: ListActiveMoviesPage :many
 SELECT id, title, release_date, overview, poster_path, backdrop_path, popularity
 FROM movies
 WHERE release_date >= date_trunc('month', $1::timestamptz)::date
+  AND release_date <= (date_trunc('month', $1::timestamptz)::date + interval '1 month - 1 second')
   AND $1::timestamptz <= (release_date + interval '14 days')
   AND (
     $3::bigint = 0 OR (popularity < $2) OR (popularity = $2 AND id < $3)

@@ -1,0 +1,3 @@
+format:
+	gci write --section standard --section default --section "Prefix(cinekami-server/internal)" --section "Prefix(cinekami-server/pkg)" .
+	go fmt ./...

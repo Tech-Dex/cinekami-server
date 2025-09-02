@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -17,10 +18,11 @@ import (
 	"cinekami-server/internal/migrate"
 	"cinekami-server/internal/repos"
 	"cinekami-server/internal/server"
-	"cinekami-server/pkg/cache"
+
+	pkgcache "cinekami-server/pkg/cache"
+	pkgcrypto "cinekami-server/pkg/crypto"
 	pkgdb "cinekami-server/pkg/db"
-	"cinekami-server/pkg/signer"
-	"cinekami-server/pkg/tmdb"
+	pkgtmdb "cinekami-server/pkg/tmdb"
 )
 
 func main() {
@@ -40,27 +42,38 @@ func main() {
 		log.Fatal().Err(err).Msg("migrations failed")
 	}
 
-	var c cache.Cache
+	var c pkgcache.Cache
 	if addr := cfg.ValkeyAddr; addr != "" {
-		vc, err := cache.NewValkey(addr, cfg.ValkeyPassword)
+		vc, err := pkgcache.NewValkey(addr, cfg.ValkeyPassword)
 		if err != nil {
 			log.Error().Err(err).Msg("valkey connect failed, using in-memory cache")
-			c = cache.NewInMemory()
+			c = pkgcache.NewInMemory()
 		} else {
 			c = vc
 		}
 	} else {
-		c = cache.NewInMemory()
+		c = pkgcache.NewInMemory()
 	}
 
 	repository := repos.New(pool)
-	signer := signer.NewHMAC(cfg.CursorSecret)
+	signer := pkgcrypto.NewHMAC(cfg.CursorSecret)
 	api := server.New(repository, c, signer)
 
+	// Trigger a one-off test snapshot at startup (temporary for testing).
+	// Remove or comment this line after verification.
+
 	// Start background jobs
-	var tmdbClient *tmdb.Client
+	var tmdbClient *pkgtmdb.Client
 	if cfg.TMDBAPIKey != "" {
-		tmdbClient = tmdb.New(cfg.TMDBAPIKey)
+		tmdbClient = pkgtmdb.New(cfg.TMDBAPIKey)
+	}
+
+	if cfg.TMDBTestMode {
+		log.Info().Msg("TMDB test mode enabled; starting fast sync and one-off snapshot")
+		jobs.StartTMDBSyncTest(ctx, repository, tmdbClient, cfg.TMDBRegion, cfg.TMDBLanguage)
+		jobs.StartTestSnapshot(ctx, repository)
+	} else {
+		jobs.StartTMDBSync(ctx, repository, tmdbClient, cfg.TMDBRegion, cfg.TMDBLanguage)
 	}
 
 	// Seed movies once if table is empty (useful for testing/dev)
@@ -68,13 +81,12 @@ func main() {
 		log.Error().Err(err).Msg("seed from TMDb failed")
 	}
 
-	jobs.StartTMDBSync(ctx, repository, tmdbClient, cfg.TMDBRegion, cfg.TMDBLanguage)
 	jobs.StartMonthlySnapshot(ctx, repository)
 
 	addr := ":" + cfg.Port
 	go func() {
 		log.Info().Str("addr", addr).Msg("listening")
-		if err := server.StartHTTP(ctx, addr, api.Router()); err != nil && err != http.ErrServerClosed {
+		if err := server.StartHTTP(ctx, addr, api.Router()); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatal().Err(err).Msg("server error")
 		}
 	}()

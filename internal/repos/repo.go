@@ -8,7 +8,8 @@ import (
 
 	"cinekami-server/internal/model"
 	"cinekami-server/internal/store"
-	"cinekami-server/pkg/tmdb"
+
+	pkgtmdb "cinekami-server/pkg/tmdb"
 )
 
 type Repository struct {
@@ -35,12 +36,20 @@ func New(db *pgxpool.Pool) *Repository {
 func (r *Repository) ListActiveMoviesPage(ctx context.Context, now time.Time, cursorPop *float64, cursorID *int64, limit int32) ([]model.Movie, error) {
 	return r.Movies.ListActiveMoviesPage(ctx, now, cursorPop, cursorID, limit)
 }
-func (r *Repository) UpsertMovies(ctx context.Context, movies []tmdb.Movie) (int, error) {
+func (r *Repository) UpsertMovies(ctx context.Context, movies []pkgtmdb.Movie) (int, error) {
 	return r.Movies.UpsertMovies(ctx, movies)
 }
 func (r *Repository) HasMovies(ctx context.Context) (bool, error) { return r.Movies.HasMovies(ctx) }
 func (r *Repository) CountActiveMovies(ctx context.Context, now time.Time) (int64, error) {
 	return r.Movies.CountActiveMovies(ctx, now)
+}
+
+// New filtered/sorted active movies forwarders
+func (r *Repository) ListActiveMoviesPageFiltered(ctx context.Context, now time.Time, f ActiveMoviesFilter) ([]model.Movie, float64, error) {
+	return r.Movies.ListActiveMoviesPageFiltered(ctx, now, f)
+}
+func (r *Repository) CountActiveMoviesFiltered(ctx context.Context, now time.Time, minPop, maxPop *float64) (int64, error) {
+	return r.Movies.CountActiveMoviesFiltered(ctx, now, minPop, maxPop)
 }
 
 func (r *Repository) CreateVote(ctx context.Context, movieID int64, category, fingerprint string, now time.Time) (bool, error) {
@@ -68,4 +77,12 @@ func (r *Repository) ListSnapshotsByMonthPage(ctx context.Context, month string,
 }
 func (r *Repository) CountSnapshotsByMonth(ctx context.Context, month string) (int64, error) {
 	return r.Snapshots.CountSnapshotsByMonth(ctx, month)
+}
+
+// New filtered snapshot forwarders
+func (r *Repository) ListSnapshotsByMonthFiltered(ctx context.Context, f SnapshotsFilter) ([]model.Snapshot, float64, error) {
+	return r.Snapshots.ListSnapshotsByMonthFiltered(ctx, f)
+}
+func (r *Repository) CountSnapshotsByMonthFiltered(ctx context.Context, month string, minPop, maxPop *float64) (int64, error) {
+	return r.Snapshots.CountSnapshotsByMonthFiltered(ctx, month, minPop, maxPop)
 }

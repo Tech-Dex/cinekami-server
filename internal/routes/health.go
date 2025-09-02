@@ -2,14 +2,21 @@ package routes
 
 import (
 	"net/http"
+	"time"
 
-	pkgdeps "cinekami-server/pkg/deps"
+	"cinekami-server/internal/deps"
+
 	pkghttpx "cinekami-server/pkg/httpx"
 )
 
 // Health returns a handler that responds with service status.
-func Health(_ pkgdeps.ServerDeps) http.HandlerFunc {
+func Health(d deps.ServerDeps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		pkghttpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		uptime := int64(time.Since(d.StartedAt).Seconds())
+		pkghttpx.WriteJSON(w, http.StatusOK, map[string]any{
+			"status":         "ok",
+			"service":        d.Name,
+			"uptime_seconds": uptime,
+		})
 	}
 }

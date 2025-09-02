@@ -7,11 +7,12 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"cinekami-server/internal/repos"
-	"cinekami-server/pkg/tmdb"
+
+	pkgtmdb "cinekami-server/pkg/tmdb"
 )
 
 // StartTMDBSync starts a weekly ticker that triggers the TMDb sync for current month releases.
-func StartTMDBSync(ctx context.Context, r *repos.Repository, c *tmdb.Client, region, language string) {
+func StartTMDBSync(ctx context.Context, r *repos.Repository, c *pkgtmdb.Client, region, language string) {
 	if c == nil {
 		log.Warn().Msg("TMDb client not configured; skipping weekly sync")
 		return
@@ -56,6 +57,40 @@ func StartTMDBSync(ctx context.Context, r *repos.Repository, c *tmdb.Client, reg
 				}
 				// Schedule next week
 				t.Reset(7 * 24 * time.Hour)
+			}
+		}
+	}()
+}
+
+// StartTMDBSyncTest starts a fast sync every 30 seconds for testing purposes.
+// It performs the same movie discovery and upsert as the weekly sync but with a 30s ticker.
+func StartTMDBSyncTest(ctx context.Context, r *repos.Repository, c *pkgtmdb.Client, region, language string) {
+	if c == nil {
+		log.Warn().Msg("TMDb client not configured; skipping test sync")
+		return
+	}
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				// Compute current month window in UTC
+				cur := time.Now().UTC()
+				start := time.Date(cur.Year(), cur.Month(), 1, 0, 0, 0, 0, time.UTC)
+				end := start.AddDate(0, 1, -1)
+				movies, err := c.DiscoverByReleaseWindow(start, end, region, language, 0)
+				if err != nil {
+					log.Error().Err(err).Msg("tmdb test discover failed")
+				} else {
+					if n, e := r.UpsertMovies(ctx, movies); e != nil {
+						log.Error().Err(e).Msg("upsert movies failed (test)")
+					} else {
+						log.Info().Int("count", n).Msg("tmdb test sync upserted movies")
+					}
+				}
 			}
 		}
 	}()

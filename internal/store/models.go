@@ -42,13 +42,13 @@ type Vote struct {
 	ID        pgtype.UUID        `json:"id"`
 	MovieID   int64              `json:"movie_id"`
 	VoterID   pgtype.UUID        `json:"voter_id"`
-	Category  interface{}        `json:"category"`
+	Category  string             `json:"category"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
 type VoteTally struct {
 	MovieID  int64       `json:"movie_id"`
-	Category interface{} `json:"category"`
+	Category string      `json:"category"`
 	Count    pgtype.Int8 `json:"count"`
 }
 

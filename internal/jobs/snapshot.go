@@ -34,3 +34,16 @@ func StartMonthlySnapshot(ctx context.Context, r *repos.Repository) {
 		}
 	}()
 }
+
+// StartTestSnapshot runs a single snapshot immediately in a goroutine for manual testing.
+// This is intentionally not wired into any HTTP endpoint — call it from tests or main when needed.
+func StartTestSnapshot(ctx context.Context, r *repos.Repository) {
+	go func() {
+		now := time.Now().UTC()
+		if err := r.SnapshotMonth(ctx, now.Year(), now.Month()); err != nil {
+			log.Error().Err(err).Msg("test snapshot failed")
+			return
+		}
+		log.Info().Int("year", now.Year()).Int("month", int(now.Month())).Msg("test snapshot completed")
+	}()
+}

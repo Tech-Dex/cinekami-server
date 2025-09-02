@@ -5,6 +5,7 @@ sql:
       - internal/migrate/migrations/0001_init.up.sql
       - internal/migrate/migrations/0002_indexes.up.sql
       - internal/migrate/migrations/0003_popularity_idx.up.sql
+      - internal/migrate/migrations/0004_votes_unique_movie_voter.up.sql
     queries:
       - internal/store/queries
     gen:
@@ -24,3 +25,5 @@ sql:
             go_type:
               import: "encoding/json"
               type: "RawMessage"
+          - db_type: "vote_category"
+            go_type: "string"

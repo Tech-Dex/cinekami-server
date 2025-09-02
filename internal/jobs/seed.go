@@ -7,12 +7,13 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"cinekami-server/internal/repos"
-	"cinekami-server/pkg/tmdb"
+
+	pkgtmdb "cinekami-server/pkg/tmdb"
 )
 
 // SeedTMDBIfEmpty populates movies with current-month TMDb releases if the table is empty.
 // Intended for testing/dev convenience; no-op if client is nil or movies already exist.
-func SeedTMDBIfEmpty(ctx context.Context, r *repos.Repository, c *tmdb.Client, region, language string) error {
+func SeedTMDBIfEmpty(ctx context.Context, r *repos.Repository, c *pkgtmdb.Client, region, language string) error {
 	if c == nil {
 		return nil
 	}

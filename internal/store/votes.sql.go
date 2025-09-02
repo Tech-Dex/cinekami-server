@@ -14,14 +14,14 @@ import (
 const InsertVote = `-- name: InsertVote :one
 INSERT INTO votes (movie_id, voter_id, category)
 VALUES ($1, $2, $3)
-ON CONFLICT (movie_id, voter_id, category) DO NOTHING
+ON CONFLICT (movie_id, voter_id) DO NOTHING
 RETURNING id
 `
 
 type InsertVoteParams struct {
 	MovieID  int64       `json:"movie_id"`
 	VoterID  pgtype.UUID `json:"voter_id"`
-	Category interface{} `json:"category"`
+	Category string      `json:"category"`
 }
 
 func (q *Queries) InsertVote(ctx context.Context, arg InsertVoteParams) (pgtype.UUID, error) {

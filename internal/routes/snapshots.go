@@ -5,14 +5,17 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
-	pkgdeps "cinekami-server/pkg/deps"
+	"cinekami-server/internal/deps"
+	"cinekami-server/internal/repos"
+
 	pkghttpx "cinekami-server/pkg/httpx"
 )
 
 // Snapshots handles GET /snapshots/{year}/{month}
-func Snapshots(d pkgdeps.ServerDeps) http.HandlerFunc {
+func Snapshots(d deps.ServerDeps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		yearStr := r.PathValue("year")
@@ -24,7 +27,40 @@ func Snapshots(d pkgdeps.ServerDeps) http.HandlerFunc {
 			return
 		}
 		mon := fmt.Sprintf("%04d-%02d", year, month)
-		cursor := r.URL.Query().Get("signer")
+
+		// Parse filters
+		sortBy := strings.ToLower(r.URL.Query().Get("sort_by"))
+		if sortBy == "" {
+			sortBy = string(repos.SnapSortByPopularity)
+		}
+		sortDir := strings.ToLower(r.URL.Query().Get("sort_dir"))
+		if sortDir == "" {
+			sortDir = string(repos.SnapSortDirDesc)
+		}
+		var minPop *float64
+		if v := r.URL.Query().Get("min_popularity"); v != "" {
+			if f, err := strconv.ParseFloat(v, 64); err == nil {
+				minPop = &f
+			} else {
+				pkghttpx.WriteError(w, r, pkghttpx.BadRequest("invalid min_popularity", err))
+				return
+			}
+		}
+		var maxPop *float64
+		if v := r.URL.Query().Get("max_popularity"); v != "" {
+			if f, err := strconv.ParseFloat(v, 64); err == nil {
+				maxPop = &f
+			} else {
+				pkghttpx.WriteError(w, r, pkghttpx.BadRequest("invalid max_popularity", err))
+				return
+			}
+		}
+		if minPop != nil && maxPop != nil && *minPop > *maxPop {
+			pkghttpx.WriteError(w, r, pkghttpx.BadRequest("min_popularity > max_popularity", nil))
+			return
+		}
+
+		cursor := r.URL.Query().Get("cursor")
 		limitStr := r.URL.Query().Get("limit")
 		if limitStr == "" {
 			limitStr = "20"
@@ -34,40 +70,71 @@ func Snapshots(d pkgdeps.ServerDeps) http.HandlerFunc {
 			pkghttpx.WriteError(w, r, pkghttpx.BadRequest("invalid limit", err))
 			return
 		}
-		var curMovieID *int64
+		var curKey *float64
+		var curID *int64
 		if cursor != "" {
-			if d.Signer == nil {
-				pkghttpx.WriteError(w, r, pkghttpx.Internal("signer signer not configured", nil))
+			if d.Codec == nil {
+				pkghttpx.WriteError(w, r, pkghttpx.Internal("codec crypto not configured", nil))
 				return
 			}
-			mid, decErr := d.Signer.DecodeSnapshotsCursor(cursor)
+			k, id, decErr := d.Codec.DecodeSnapshotsCursor(cursor)
 			if decErr != nil {
-				pkghttpx.WriteError(w, r, pkghttpx.BadRequest("invalid signer", decErr))
+				pkghttpx.WriteError(w, r, pkghttpx.BadRequest("invalid cursor", decErr))
 				return
 			}
-			curMovieID = &mid
+			curKey = &k
+			curID = &id
 		}
-		cacheKey := "snapshots:" + mon + ":signer:" + cursor + ":limit:" + strconv.FormatInt(lim64, 10)
+
+		cacheKey := strings.Join([]string{
+			"snapshots:", mon,
+			":sort:", sortBy,
+			":dir:", sortDir,
+			":min:", func() string {
+				if minPop != nil {
+					return strconv.FormatFloat(*minPop, 'f', -1, 64)
+				}
+				return ""
+			}(),
+			":max:", func() string {
+				if maxPop != nil {
+					return strconv.FormatFloat(*maxPop, 'f', -1, 64)
+				}
+				return ""
+			}(),
+			":cursor:", cursor,
+			":limit:", strconv.FormatInt(lim64, 10),
+		}, "")
 		if cached, ok := d.Cache.Get(ctx, cacheKey); ok {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(cached))
 			return
 		}
-		items, err := d.Repo.ListSnapshotsByMonthPage(ctx, mon, curMovieID, int32(lim64))
+
+		items, lastKey, err := d.Repo.ListSnapshotsByMonthFiltered(ctx, repos.SnapshotsFilter{
+			Month:     mon,
+			SortBy:    repos.SnapshotSortBy(sortBy),
+			SortDir:   repos.SnapshotSortDir(sortDir),
+			MinPop:    minPop,
+			MaxPop:    maxPop,
+			CursorKey: curKey,
+			CursorID:  curID,
+			Limit:     int32(lim64),
+		})
 		if err != nil {
 			pkghttpx.WriteError(w, r, pkghttpx.Internal("failed to get snapshots", err))
 			return
 		}
-		total, err := d.Repo.CountSnapshotsByMonth(ctx, mon)
+		total, err := d.Repo.CountSnapshotsByMonthFiltered(ctx, mon, minPop, maxPop)
 		if err != nil {
 			pkghttpx.WriteError(w, r, pkghttpx.Internal("failed to count snapshots", err))
 			return
 		}
 		var next *string
-		if len(items) == int(lim64) && d.Signer != nil {
+		if len(items) == int(lim64) && d.Codec != nil {
 			last := items[len(items)-1]
-			nextVal := d.Signer.EncodeSnapshotsCursor(last.MovieID)
+			nextVal := d.Codec.EncodeSnapshotsCursor(lastKey, last.MovieID)
 			next = &nextVal
 		}
 		resp := map[string]any{

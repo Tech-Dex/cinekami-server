@@ -20,3 +20,17 @@ LIMIT $4;
 
 -- name: CountTalliesByMovie :one
 SELECT COUNT(*) FROM vote_tallies WHERE movie_id = $1;
+
+-- name: GetTalliesForMovies :many
+WITH cats AS (
+  SELECT unnest(enum_range(NULL::vote_category))::vote_category AS category
+), mids AS (
+  SELECT unnest($1::bigint[]) AS movie_id
+)
+SELECT m.movie_id,
+       c.category::text AS category,
+       COALESCE(t.count, 0) AS count
+FROM mids m
+CROSS JOIN cats c
+LEFT JOIN vote_tallies t ON t.movie_id = m.movie_id AND t.category = c.category
+ORDER BY m.movie_id, c.category;

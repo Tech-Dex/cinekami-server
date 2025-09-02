@@ -15,6 +15,7 @@ type Config struct {
 	TMDBAPIKey     string
 	TMDBRegion     string
 	TMDBLanguage   string
+	TMDBTestMode   bool
 	Env            string
 	CursorSecret   []byte
 }
@@ -26,11 +27,12 @@ func FromEnv() Config {
 		ValkeyAddr:     getEnv("VALKEY_ADDR", "localhost:6379"),
 		ValkeyPassword: os.Getenv("VALKEY_PASSWORD"),
 		TMDBAPIKey:     os.Getenv("TMDB_API_KEY"),
-		TMDBRegion:     getEnv("TMDB_REGION", "US"),
+		TMDBRegion:     getEnv("TMDB_REGION", "RO"),
 		TMDBLanguage:   getEnv("TMDB_LANGUAGE", "en-US"),
+		TMDBTestMode:   os.Getenv("TMDB_TEST_MODE") == "1",
 		Env:            getEnv("ENV", "development"),
 	}
-	// signer secret: optional env CURSOR_SECRET as raw bytes base64 or hex? Keep it raw; if empty, generate ephemeral
+	// crypto secret: optional env CURSOR_SECRET as raw bytes base64 or hex? Keep it raw; if empty, generate ephemeral
 	if s := os.Getenv("CURSOR_SECRET"); s != "" {
 		c.CursorSecret = []byte(s)
 	} else {
@@ -38,7 +40,7 @@ func FromEnv() Config {
 		if _, err := rand.Read(buf); err == nil {
 			c.CursorSecret = buf
 		} else {
-			log.Printf("warning: failed to generate signer secret: %v", err)
+			log.Printf("warning: failed to generate crypto secret: %v", err)
 			c.CursorSecret = []byte("insecure-default")
 		}
 	}

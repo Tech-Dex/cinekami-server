@@ -91,6 +91,11 @@ func (c *Client) DiscoverByReleaseWindow(start, end time.Time, region, language 
 				if it.ReleaseDate == "" {
 					continue
 				}
+				if it.Popularity < 3.0 {
+					// break early on low-popularity items
+					done = true
+					return
+				}
 				d, e := time.Parse("2006-01-02", it.ReleaseDate)
 				if e != nil {
 					continue

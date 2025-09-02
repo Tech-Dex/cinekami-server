@@ -14,6 +14,7 @@ ON CONFLICT (id) DO UPDATE SET
 SELECT id, title, release_date, overview, poster_path, backdrop_path, popularity
 FROM movies
 WHERE release_date >= date_trunc('month', $1::timestamptz)::date
+  AND release_date <= (date_trunc('month', $1::timestamptz)::date + interval '1 month - 1 second')
   AND $1::timestamptz <= (release_date + interval '14 days')
   AND (
     $3::bigint = 0 OR (popularity < $2) OR (popularity = $2 AND id < $3)
@@ -25,6 +26,7 @@ LIMIT $4;
 SELECT COUNT(*)
 FROM movies
 WHERE release_date >= date_trunc('month', $1::timestamptz)::date
+  AND release_date <= (date_trunc('month', $1::timestamptz)::date + interval '1 month - 1 second')
   AND $1::timestamptz <= (release_date + interval '14 days');
 
 -- name: GetMovieReleaseDate :one
@@ -41,3 +43,64 @@ FROM movies
 WHERE release_date >= date_trunc('month', $1::date)
   AND release_date <  (date_trunc('month', $1::date) + interval '1 month')
 ORDER BY id;
+
+-- name: ListActiveMoviesFilteredPage :many
+WITH base AS (
+  SELECT id, title, release_date, overview, poster_path, backdrop_path, popularity
+  FROM movies
+  WHERE release_date >= date_trunc('month', $1::timestamptz)::date
+    AND release_date <= (date_trunc('month', $1::timestamptz)::date + interval '1 month - 1 second')
+    AND $1::timestamptz <= (release_date + interval '14 days')
+    AND ($2::float8 IS NULL OR popularity >= $2)
+    AND ($3::float8 IS NULL OR popularity <= $3)
+), t AS (
+  SELECT movie_id,
+         SUM(CASE WHEN category = 'solo_friends' THEN count ELSE 0 END)::bigint AS solo_friends,
+         SUM(CASE WHEN category = 'couple' THEN count ELSE 0 END)::bigint AS couple,
+         SUM(CASE WHEN category = 'streaming' THEN count ELSE 0 END)::bigint AS streaming,
+         SUM(CASE WHEN category = 'arr' THEN count ELSE 0 END)::bigint AS arr
+  FROM vote_tallies
+  GROUP BY movie_id
+), joined AS (
+  SELECT b.*, COALESCE(t.solo_friends,0) AS solo_friends, COALESCE(t.couple,0) AS couple, COALESCE(t.streaming,0) AS streaming, COALESCE(t.arr,0) AS arr
+  FROM base b LEFT JOIN t ON t.movie_id = b.id
+), keyed AS (
+  SELECT *, CASE
+      WHEN $4::text = 'popularity' THEN popularity
+      WHEN $4::text = 'release_date' THEN extract(epoch from release_date)
+      WHEN $4::text = 'solo_friends' THEN solo_friends::double precision
+      WHEN $4::text = 'couple' THEN couple::double precision
+      WHEN $4::text = 'streaming' THEN streaming::double precision
+      WHEN $4::text = 'arr' THEN arr::double precision
+      ELSE popularity
+    END AS key_value
+  FROM joined
+), paged AS (
+  SELECT * FROM keyed
+  WHERE (
+    $6::float8 IS NULL OR (
+      CASE WHEN $5::text = 'desc'
+           THEN (key_value < $6 OR (key_value = $6 AND id < $7))
+           ELSE (key_value > $6 OR (key_value = $6 AND id > $7))
+      END
+    )
+  )
+)
+SELECT id, title, release_date, overview, poster_path, backdrop_path, popularity,
+       solo_friends, couple, streaming, arr, key_value
+FROM paged
+ORDER BY
+  CASE WHEN $5::text = 'desc' THEN key_value END DESC NULLS LAST,
+  CASE WHEN $5::text = 'asc'  THEN key_value END ASC  NULLS LAST,
+  CASE WHEN $5::text = 'desc' THEN id END DESC NULLS LAST,
+  CASE WHEN $5::text = 'asc'  THEN id END ASC  NULLS LAST
+LIMIT $8;
+
+-- name: CountActiveMoviesFiltered :one
+SELECT COUNT(*)
+FROM movies
+WHERE release_date >= date_trunc('month', $1::timestamptz)::date
+  AND release_date <= (date_trunc('month', $1::timestamptz)::date + interval '1 month - 1 second')
+  AND $1::timestamptz <= (release_date + interval '14 days')
+  AND ($2::float8 IS NULL OR popularity >= $2)
+  AND ($3::float8 IS NULL OR popularity <= $3);

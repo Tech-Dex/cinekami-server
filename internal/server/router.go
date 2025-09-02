@@ -2,20 +2,22 @@ package server
 
 import (
 	"net/http"
+	"time"
 
+	"cinekami-server/internal/deps"
 	"cinekami-server/internal/repos"
 	"cinekami-server/internal/routes"
-	"cinekami-server/pkg/cache"
-	"cinekami-server/pkg/deps"
-	"cinekami-server/pkg/signer"
+
+	pkgcache "cinekami-server/pkg/cache"
+	pkgcrypto "cinekami-server/pkg/crypto"
 )
 
 type Server struct {
 	deps.ServerDeps
 }
 
-func New(r *repos.Repository, c cache.Cache, signer signer.Codec) *Server {
-	return &Server{ServerDeps: deps.ServerDeps{Repo: r, Cache: c, Signer: signer}}
+func New(r *repos.Repository, c pkgcache.Cache, signer pkgcrypto.Codec) *Server {
+	return &Server{ServerDeps: deps.ServerDeps{Repo: r, Cache: c, Codec: signer, Name: "cinekami-server", StartedAt: time.Now().UTC()}}
 }
 
 func (s *Server) Router() http.Handler {
@@ -26,7 +28,7 @@ func (s *Server) Router() http.Handler {
 	mux.HandleFunc("GET /health", routes.Health(sd))
 	mux.HandleFunc("GET /movies/active", routes.MoviesActive(sd))
 	mux.HandleFunc("GET /movies/{id}/tallies", routes.MovieTallies(sd))
-	mux.HandleFunc("POST /votes", routes.Vote(sd))
+	mux.HandleFunc("POST /movies/{id}/votes", routes.MovieVote(sd))
 	mux.HandleFunc("GET /snapshots/{year}/{month}", routes.Snapshots(sd))
 
 	return withCorrelationID(withLogging(mux))

@@ -1,4 +1,4 @@
-package signer
+package crypto
 
 import (
 	"crypto/hmac"
@@ -10,7 +10,7 @@ import (
 	"math"
 )
 
-// Codec lists the signer methods the handlers rely on.
+// Codec lists the crypto methods the handlers rely on.
 // Implementations must be safe for concurrent use.
 type Codec interface {
 	EncodeMoviesCursor(popularity float64, id int64) string
@@ -19,8 +19,9 @@ type Codec interface {
 	EncodeTalliesCursor(count int64, category string) string
 	DecodeTalliesCursor(token string) (int64, string, error)
 
-	EncodeSnapshotsCursor(movieID int64) string
-	DecodeSnapshotsCursor(token string) (int64, error)
+	// Snapshots cursor now encodes key (float64) + movieID (int64)
+	EncodeSnapshotsCursor(key float64, movieID int64) string
+	DecodeSnapshotsCursor(token string) (float64, int64, error)
 }
 
 // HMAC implements Codec using HMAC-SHA256 for integrity.
@@ -30,7 +31,7 @@ type HMAC struct {
 	h   func() hash.Hash
 }
 
-// NewHMAC creates an HMAC signer with the provided secret key.
+// NewHMAC creates an HMAC crypto with the provided secret key.
 func NewHMAC(key []byte) *HMAC {
 	return &HMAC{key: append([]byte(nil), key...), h: sha256.New}
 }
@@ -64,7 +65,7 @@ func (c *HMAC) open(token string, minPayloadLen int) ([]byte, error) {
 	return payload, nil
 }
 
-// Active movies signer: popularity(float64) + id(int64)
+// Active movies crypto: popularity(float64) + id(int64)
 func (c *HMAC) EncodeMoviesCursor(popularity float64, id int64) string {
 	payload := make([]byte, 16)
 	binary.BigEndian.PutUint64(payload[0:8], math.Float64bits(popularity))
@@ -82,7 +83,7 @@ func (c *HMAC) DecodeMoviesCursor(token string) (float64, int64, error) {
 	return pop, id, nil
 }
 
-// Tallies signer: count(int64) + categoryLen(uint16) + category bytes
+// Tallies crypto: count(int64) + categoryLen(uint16) + category bytes
 func (c *HMAC) EncodeTalliesCursor(count int64, category string) string {
 	catBytes := []byte(category)
 	payload := make([]byte, 8+2+len(catBytes))
@@ -106,18 +107,20 @@ func (c *HMAC) DecodeTalliesCursor(token string) (int64, string, error) {
 	return cnt, category, nil
 }
 
-// Snapshots signer: movie_id(int64)
-func (c *HMAC) EncodeSnapshotsCursor(movieID int64) string {
-	payload := make([]byte, 8)
-	binary.BigEndian.PutUint64(payload, uint64(movieID))
+// Snapshots crypto: key(float64) + movie_id(int64)
+func (c *HMAC) EncodeSnapshotsCursor(key float64, movieID int64) string {
+	payload := make([]byte, 16)
+	binary.BigEndian.PutUint64(payload[0:8], math.Float64bits(key))
+	binary.BigEndian.PutUint64(payload[8:16], uint64(movieID))
 	return c.seal(payload)
 }
 
-func (c *HMAC) DecodeSnapshotsCursor(token string) (int64, error) {
-	payload, err := c.open(token, 8)
+func (c *HMAC) DecodeSnapshotsCursor(token string) (float64, int64, error) {
+	payload, err := c.open(token, 16)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
-	id := int64(binary.BigEndian.Uint64(payload))
-	return id, nil
+	key := math.Float64frombits(binary.BigEndian.Uint64(payload[0:8]))
+	id := int64(binary.BigEndian.Uint64(payload[8:16]))
+	return key, id, nil
 }

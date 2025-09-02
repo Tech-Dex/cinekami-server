@@ -48,6 +48,47 @@ func (q *Queries) GetTalliesByMovie(ctx context.Context, movieID int64) ([]VoteT
 	return items, nil
 }
 
+const GetTalliesForMovies = `-- name: GetTalliesForMovies :many
+WITH cats AS (
+  SELECT unnest(enum_range(NULL::vote_category))::vote_category AS category
+), mids AS (
+  SELECT unnest($1::bigint[]) AS movie_id
+)
+SELECT m.movie_id,
+       c.category::text AS category,
+       COALESCE(t.count, 0) AS count
+FROM mids m
+CROSS JOIN cats c
+LEFT JOIN vote_tallies t ON t.movie_id = m.movie_id AND t.category = c.category
+ORDER BY m.movie_id, c.category
+`
+
+type GetTalliesForMoviesRow struct {
+	MovieID  interface{} `json:"movie_id"`
+	Category string      `json:"category"`
+	Count    int64       `json:"count"`
+}
+
+func (q *Queries) GetTalliesForMovies(ctx context.Context, dollar_1 []int64) ([]GetTalliesForMoviesRow, error) {
+	rows, err := q.db.Query(ctx, GetTalliesForMovies, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetTalliesForMoviesRow{}
+	for rows.Next() {
+		var i GetTalliesForMoviesRow
+		if err := rows.Scan(&i.MovieID, &i.Category, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const IncrementTally = `-- name: IncrementTally :exec
 INSERT INTO vote_tallies (movie_id, category, count)
 VALUES ($1, $2, 1)
@@ -55,8 +96,8 @@ ON CONFLICT (movie_id, category) DO UPDATE SET count = vote_tallies.count + 1
 `
 
 type IncrementTallyParams struct {
-	MovieID  int64       `json:"movie_id"`
-	Category interface{} `json:"category"`
+	MovieID  int64  `json:"movie_id"`
+	Category string `json:"category"`
 }
 
 func (q *Queries) IncrementTally(ctx context.Context, arg IncrementTallyParams) error {

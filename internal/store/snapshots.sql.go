@@ -8,6 +8,8 @@ package store
 import (
 	"context"
 	"encoding/json"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const CountSnapshotsByMonth = `-- name: CountSnapshotsByMonth :one
@@ -16,6 +18,28 @@ SELECT COUNT(*) FROM snapshots WHERE month = $1
 
 func (q *Queries) CountSnapshotsByMonth(ctx context.Context, month string) (int64, error) {
 	row := q.db.QueryRow(ctx, CountSnapshotsByMonth, month)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const CountSnapshotsByMonthFiltered = `-- name: CountSnapshotsByMonthFiltered :one
+SELECT COUNT(*)
+FROM snapshots st
+JOIN movies m ON m.id = st.movie_id
+WHERE st.month = $1
+  AND ($2::float8 IS NULL OR m.popularity >= $2)
+  AND ($3::float8 IS NULL OR m.popularity <= $3)
+`
+
+type CountSnapshotsByMonthFilteredParams struct {
+	Month   string  `json:"month"`
+	Column2 float64 `json:"column_2"`
+	Column3 float64 `json:"column_3"`
+}
+
+func (q *Queries) CountSnapshotsByMonthFiltered(ctx context.Context, arg CountSnapshotsByMonthFilteredParams) (int64, error) {
+	row := q.db.QueryRow(ctx, CountSnapshotsByMonthFiltered, arg.Month, arg.Column2, arg.Column3)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -67,6 +91,124 @@ func (q *Queries) GetSnapshotsByMonth(ctx context.Context, month string) ([]Snap
 			&i.MovieID,
 			&i.Tallies,
 			&i.ClosedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const ListSnapshotsByMonthFilteredPage = `-- name: ListSnapshotsByMonthFilteredPage :many
+WITH s AS (
+  SELECT st.month, st.movie_id, st.tallies, st.closed_at, m.popularity, m.title, m.release_date, m.overview, m.poster_path, m.backdrop_path
+  FROM snapshots st
+  JOIN movies m ON m.id = st.movie_id
+  WHERE st.month = $1
+    AND ($2::float8 IS NULL OR m.popularity >= $2)
+    AND ($3::float8 IS NULL OR m.popularity <= $3)
+), exploded AS (
+  SELECT month, movie_id, closed_at, popularity, title, release_date, overview, poster_path, backdrop_path,
+    COALESCE((tallies ->> 'solo_friends')::bigint, 0) AS solo_friends,
+    COALESCE((tallies ->> 'couple')::bigint, 0) AS couple,
+    COALESCE((tallies ->> 'streaming')::bigint, 0) AS streaming,
+    COALESCE((tallies ->> 'arr')::bigint, 0) AS arr
+  FROM s
+), keyed AS (
+  SELECT month, movie_id, closed_at, popularity, title, release_date, overview, poster_path, backdrop_path, solo_friends, couple, streaming, arr, CASE
+    WHEN $4::text = 'popularity' THEN popularity
+    WHEN $4::text = 'release_date' THEN extract(epoch from release_date)
+    WHEN $4::text = 'solo_friends' THEN solo_friends::double precision
+    WHEN $4::text = 'couple' THEN couple::double precision
+    WHEN $4::text = 'streaming' THEN streaming::double precision
+    WHEN $4::text = 'arr' THEN arr::double precision
+    ELSE popularity
+  END AS key_value
+  FROM exploded
+), paged AS (
+  SELECT month, movie_id, closed_at, popularity, title, release_date, overview, poster_path, backdrop_path, solo_friends, couple, streaming, arr, key_value FROM keyed
+  WHERE (
+    $6::float8 IS NULL OR (
+      CASE WHEN $5::text = 'desc' THEN (key_value < $6 OR (key_value = $6 AND movie_id < $7))
+           ELSE (key_value > $6 OR (key_value = $6 AND movie_id > $7))
+      END
+    )
+  )
+)
+SELECT movie_id, month, closed_at, popularity, title, release_date, overview, poster_path, backdrop_path, solo_friends, couple, streaming, arr, key_value
+FROM paged
+ORDER BY
+  CASE WHEN $5::text = 'desc' THEN key_value END DESC NULLS LAST,
+  CASE WHEN $5::text = 'asc'  THEN key_value END ASC  NULLS LAST,
+  CASE WHEN $5::text = 'desc' THEN movie_id END DESC NULLS LAST,
+  CASE WHEN $5::text = 'asc'  THEN movie_id END ASC  NULLS LAST
+LIMIT $8
+`
+
+type ListSnapshotsByMonthFilteredPageParams struct {
+	Month   string  `json:"month"`
+	Column2 float64 `json:"column_2"`
+	Column3 float64 `json:"column_3"`
+	Column4 string  `json:"column_4"`
+	Column5 string  `json:"column_5"`
+	Column6 float64 `json:"column_6"`
+	MovieID int64   `json:"movie_id"`
+	Limit   int32   `json:"limit"`
+}
+
+type ListSnapshotsByMonthFilteredPageRow struct {
+	MovieID      int64              `json:"movie_id"`
+	Month        string             `json:"month"`
+	ClosedAt     pgtype.Timestamptz `json:"closed_at"`
+	Popularity   pgtype.Float8      `json:"popularity"`
+	Title        string             `json:"title"`
+	ReleaseDate  pgtype.Date        `json:"release_date"`
+	Overview     pgtype.Text        `json:"overview"`
+	PosterPath   pgtype.Text        `json:"poster_path"`
+	BackdropPath pgtype.Text        `json:"backdrop_path"`
+	SoloFriends  interface{}        `json:"solo_friends"`
+	Couple       interface{}        `json:"couple"`
+	Streaming    interface{}        `json:"streaming"`
+	Arr          interface{}        `json:"arr"`
+	KeyValue     interface{}        `json:"key_value"`
+}
+
+func (q *Queries) ListSnapshotsByMonthFilteredPage(ctx context.Context, arg ListSnapshotsByMonthFilteredPageParams) ([]ListSnapshotsByMonthFilteredPageRow, error) {
+	rows, err := q.db.Query(ctx, ListSnapshotsByMonthFilteredPage,
+		arg.Month,
+		arg.Column2,
+		arg.Column3,
+		arg.Column4,
+		arg.Column5,
+		arg.Column6,
+		arg.MovieID,
+		arg.Limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSnapshotsByMonthFilteredPageRow{}
+	for rows.Next() {
+		var i ListSnapshotsByMonthFilteredPageRow
+		if err := rows.Scan(
+			&i.MovieID,
+			&i.Month,
+			&i.ClosedAt,
+			&i.Popularity,
+			&i.Title,
+			&i.ReleaseDate,
+			&i.Overview,
+			&i.PosterPath,
+			&i.BackdropPath,
+			&i.SoloFriends,
+			&i.Couple,
+			&i.Streaming,
+			&i.Arr,
+			&i.KeyValue,
 		); err != nil {
 			return nil, err
 		}

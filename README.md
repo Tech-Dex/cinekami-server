@@ -85,7 +85,7 @@ curl 'http://localhost:8080/movies/active?limit=20'
 Use next cursor for subsequent page:
 
 ```bash
-curl 'http://localhost:8080/movies/active?limit=20&cursor=123.45|123456'
+curl 'http://localhost:8080/movies/active?limit=20&cursor=hash_next_cursor_from_previous_response'
 ```
 
 List tallies:
@@ -98,3 +98,6 @@ curl http://localhost:8080/movies/123456/tallies
 
 - Valkey is used only for caching; PostgreSQL is the source of truth
 - TMDb sync runs weekly; the app seeds current-month movies on startup if the table is empty (with TMDB_API_KEY set)
+
+## AI Assistance
+This code was heavily assisted by GitHub Copilot Agent and GPT-5 mini for boilerplate. I wanted to explore the concept of "vibecoding".
