@@ -52,8 +52,10 @@ func MovieVote(d deps.ServerDeps) http.HandlerFunc {
 			Fingerprint string   `json:"fingerprint"`
 		}
 		type voteResp struct {
-			Inserted bool   `json:"inserted"`
-			Message  string `json:"message"`
+			Inserted      bool             `json:"inserted"`
+			Message       string           `json:"message"`
+			Tallies       map[string]int64 `json:"tallies"`
+			VotedCategory string           `json:"voted_category"`
 		}
 
 		ctx := r.Context()
@@ -94,6 +96,26 @@ func MovieVote(d deps.ServerDeps) http.HandlerFunc {
 			pkghttpx.WriteError(w, r, pkghttpx.Internal("failed to record vote", err))
 			return
 		}
+		// Fetch current tallies for this movie (includes zeros)
+		rows, terr := d.Repo.GetTalliesAllCategories(ctx, ID)
+		if terr != nil {
+			pkghttpx.WriteError(w, r, pkghttpx.Internal("failed to load tallies", terr))
+			return
+		}
+		// Build map for FE convenience
+		tallyMap := make(map[string]int64, len(model.AllowedCategories))
+		for k := range model.AllowedCategories {
+			tallyMap[k] = 0
+		}
+		for _, t := range rows {
+			tallyMap[t.Category] = t.Count
+		}
+		// Determine current user's category from DB (may differ if duplicate vote)
+		voted := ""
+		if cat, gerr := d.Repo.GetVoterCategory(ctx, ID, fingerprint); gerr == nil && cat != nil {
+			voted = *cat
+		}
+		// Invalidate caches
 		_ = d.Cache.Delete(ctx, "movie_tallies:"+strconv.FormatInt(ID, 10))
 		_ = d.Cache.Delete(ctx, "active_movies:"+time.Now().UTC().Format("2006-01"))
 		pkghttpx.WriteJSON(w, http.StatusOK, voteResp{Inserted: inserted, Message: func() string {
@@ -101,6 +123,6 @@ func MovieVote(d deps.ServerDeps) http.HandlerFunc {
 				return "vote recorded"
 			}
 			return "duplicate ignored"
-		}()})
+		}(), Tallies: tallyMap, VotedCategory: voted})
 	}
 }
