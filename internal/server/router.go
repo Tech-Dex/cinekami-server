@@ -16,8 +16,8 @@ type Server struct {
 	deps.ServerDeps
 }
 
-func New(r *repos.Repository, c pkgcache.Cache, signer pkgcrypto.Codec) *Server {
-	return &Server{ServerDeps: deps.ServerDeps{Repo: r, Cache: c, Codec: signer, Name: "cinekami-server", StartedAt: time.Now().UTC()}}
+func New(r *repos.Repository, c pkgcache.Cache, signer pkgcrypto.Codec, allowedOrigins []string) *Server {
+	return &Server{ServerDeps: deps.ServerDeps{Repo: r, Cache: c, Codec: signer, Name: "cinekami-server", StartedAt: time.Now().UTC(), AllowedOrigins: allowedOrigins}}
 }
 
 func (s *Server) Router() http.Handler {
@@ -32,5 +32,6 @@ func (s *Server) Router() http.Handler {
 	mux.HandleFunc("GET /snapshots/available", routes.SnapshotsAvailable(sd))
 	mux.HandleFunc("GET /snapshots/{year}/{month}", routes.Snapshots(sd))
 
-	return withCorrelationID(withLogging(mux))
+	// Wrap with middleware: correlation id -> CORS -> security -> logging
+	return withCorrelationID(withCORS(sd.AllowedOrigins)(withSecurityHeaders(withLogging(mux))))
 }

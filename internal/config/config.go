@@ -4,20 +4,22 @@ import (
 	"crypto/rand"
 	"log"
 	"os"
+	"strings"
 )
 
 // Config holds runtime configuration loaded from env.
 type Config struct {
-	Port           string
-	DatabaseURL    string
-	ValkeyAddr     string
-	ValkeyPassword string
-	TMDBAPIKey     string
-	TMDBRegion     string
-	TMDBLanguage   string
-	TMDBTestMode   bool
-	Env            string
-	CursorSecret   []byte
+	Port               string
+	DatabaseURL        string
+	ValkeyAddr         string
+	ValkeyPassword     string
+	TMDBAPIKey         string
+	TMDBRegion         string
+	TMDBLanguage       string
+	TMDBTestMode       bool
+	Env                string
+	CursorSecret       []byte
+	CORSAllowedOrigins []string
 }
 
 func FromEnv() Config {
@@ -31,6 +33,15 @@ func FromEnv() Config {
 		TMDBLanguage:   getEnv("TMDB_LANGUAGE", "en-US"),
 		TMDBTestMode:   os.Getenv("TMDB_TEST_MODE") == "1",
 		Env:            getEnv("ENV", "development"),
+	}
+	// CORS allowed origins
+	if s := os.Getenv("CORS_ALLOWED_ORIGINS"); s != "" {
+		parts := strings.Split(s, ",")
+		for _, p := range parts {
+			if v := strings.TrimSpace(p); v != "" {
+				c.CORSAllowedOrigins = append(c.CORSAllowedOrigins, v)
+			}
+		}
 	}
 	// crypto secret: optional env CURSOR_SECRET as raw bytes base64 or hex? Keep it raw; if empty, generate ephemeral
 	if s := os.Getenv("CURSOR_SECRET"); s != "" {

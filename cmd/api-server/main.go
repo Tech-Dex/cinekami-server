@@ -57,7 +57,7 @@ func main() {
 
 	repository := repos.New(pool)
 	signer := pkgcrypto.NewHMAC(cfg.CursorSecret)
-	api := server.New(repository, c, signer)
+	api := server.New(repository, c, signer, cfg.CORSAllowedOrigins)
 
 	// Trigger a one-off test snapshot at startup (temporary for testing).
 	// Remove or comment this line after verification.

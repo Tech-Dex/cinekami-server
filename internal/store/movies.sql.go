@@ -126,6 +126,7 @@ FROM paged p
 ORDER BY
   CASE WHEN $5::text = 'desc' THEN key_value END DESC NULLS LAST,
   CASE WHEN $5::text = 'asc'  THEN key_value END ASC  NULLS LAST,
+  CASE WHEN $4::text <> 'popularity' THEN popularity END DESC NULLS LAST,
   CASE WHEN $5::text = 'desc' THEN p.id END DESC NULLS LAST,
   CASE WHEN $5::text = 'asc'  THEN p.id END ASC  NULLS LAST
 LIMIT $8

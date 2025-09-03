@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/rs/xid"
@@ -70,5 +71,61 @@ func withLogging(next http.Handler) http.Handler {
 			Int("size", sw.size).
 			Dur("duration", dur).
 			Msg("http_request")
+	})
+}
+
+// withCORS adds CORS headers and handles preflight.
+func withCORS(allowedOrigins []string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			origin := r.Header.Get("Origin")
+			if origin != "" {
+				allowed := false
+				if len(allowedOrigins) == 0 {
+					allowed = true // default allow all if not configured
+				} else {
+					for _, o := range allowedOrigins {
+						if o == "*" || strings.EqualFold(o, origin) {
+							allowed = true
+							break
+						}
+					}
+				}
+				if allowed {
+					// echo back specific origin if provided and configured, else '*'
+					if len(allowedOrigins) == 0 || (len(allowedOrigins) == 1 && allowedOrigins[0] == "*") {
+						w.Header().Set("Access-Control-Allow-Origin", "*")
+					} else {
+						w.Header().Set("Access-Control-Allow-Origin", origin)
+						w.Header().Add("Vary", "Origin")
+					}
+					w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+					w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Fingerprint, X-Correlation-Id")
+					w.Header().Set("Access-Control-Expose-Headers", "X-Correlation-Id")
+					w.Header().Set("Access-Control-Max-Age", "600")
+				}
+			}
+
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// withSecurityHeaders sets common security headers for an API.
+func withSecurityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+		// Minimal CSP for API responses
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'")
+		// HSTS (harmless if HTTP, useful if behind TLS)
+		w.Header().Set("Strict-Transport-Security", "max-age=15552000; includeSubDomains")
+		next.ServeHTTP(w, r)
 	})
 }
