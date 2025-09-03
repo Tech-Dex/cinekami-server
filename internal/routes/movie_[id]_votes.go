@@ -68,11 +68,16 @@ func MovieVote(d deps.ServerDeps) http.HandlerFunc {
 			pkghttpx.WriteError(w, r, pkghttpx.BadRequest("invalid json", err))
 			return
 		}
-		if ID == 0 || req.Fingerprint == "" { // Category validated by JSON unmarshal
+		// Prefer header for fingerprint, fallback to body for compatibility
+		fingerprint := r.Header.Get("X-Fingerprint")
+		if fingerprint == "" {
+			fingerprint = req.Fingerprint
+		}
+		if ID == 0 || fingerprint == "" { // Category validated by JSON unmarshal
 			pkghttpx.WriteError(w, r, pkghttpx.BadRequest("missing fields", nil))
 			return
 		}
-		inserted, err := d.Repo.CreateVote(ctx, ID, string(req.Category), req.Fingerprint, time.Now().UTC())
+		inserted, err := d.Repo.CreateVote(ctx, ID, string(req.Category), fingerprint, time.Now().UTC())
 		if err != nil {
 			if errors.Is(err, repos.ErrVotingClosed) {
 				pkghttpx.WriteError(w, r, pkghttpx.Forbidden("voting closed", err))

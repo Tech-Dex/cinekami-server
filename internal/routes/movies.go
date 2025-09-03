@@ -51,6 +51,8 @@ func MoviesActive(d deps.ServerDeps) http.HandlerFunc {
 			return
 		}
 
+		fingerprint := r.Header.Get("X-Fingerprint")
+
 		cursor := r.URL.Query().Get("cursor")
 		limitStr := r.URL.Query().Get("limit")
 		if limitStr == "" {
@@ -95,6 +97,7 @@ func MoviesActive(d deps.ServerDeps) http.HandlerFunc {
 			}(),
 			":cursor:", cursor,
 			":limit:", strconv.FormatInt(lim64, 10),
+			":fp:", fingerprint,
 		}, "")
 		if cached, ok := d.Cache.Get(ctx, cacheKey); ok {
 			w.Header().Set("Content-Type", "application/json")
@@ -111,6 +114,9 @@ func MoviesActive(d deps.ServerDeps) http.HandlerFunc {
 			CursorKey: curKey,
 			CursorID:  curID,
 			Limit:     int32(lim64),
+		}
+		if fingerprint != "" {
+			f.Fingerprint = &fingerprint
 		}
 		items, lastKey, err := d.Repo.ListActiveMoviesPageFiltered(ctx, now, f)
 		if err != nil {

@@ -18,14 +18,15 @@ var AllowedCategories = map[string]struct{}{
 }
 
 type Movie struct {
-	ID           int64            `json:"id"` // TMDb id
-	Title        string           `json:"title"`
-	ReleaseDate  time.Time        `json:"release_date"`
-	Overview     *string          `json:"overview,omitempty"`
-	PosterPath   *string          `json:"poster_path,omitempty"`
-	BackdropPath *string          `json:"backdrop_path,omitempty"`
-	Popularity   float64          `json:"popularity"`
-	Tallies      map[string]int64 `json:"tallies,omitempty"`
+	ID            int64            `json:"id"` // TMDb id
+	Title         string           `json:"title"`
+	ReleaseDate   time.Time        `json:"release_date"`
+	Overview      *string          `json:"overview,omitempty"`
+	PosterPath    *string          `json:"poster_path,omitempty"`
+	BackdropPath  *string          `json:"backdrop_path,omitempty"`
+	Popularity    float64          `json:"popularity"`
+	Tallies       map[string]int64 `json:"tallies,omitempty"`
+	VotedCategory *string          `json:"voted_category,omitempty"`
 }
 
 type Tally struct {

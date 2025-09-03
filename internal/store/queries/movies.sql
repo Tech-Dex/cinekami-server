@@ -75,25 +75,30 @@ WITH base AS (
       ELSE popularity
     END AS key_value
   FROM joined
+), voted AS (
+  SELECT j.*, COALESCE(v.category::text, '') AS voted_category
+  FROM keyed j
+  LEFT JOIN voters vr ON vr.fingerprint = $9
+  LEFT JOIN votes v ON v.movie_id = j.id AND v.voter_id = vr.id
 ), paged AS (
-  SELECT * FROM keyed
+  SELECT * FROM voted
   WHERE (
     $6::float8 IS NULL OR (
       CASE WHEN $5::text = 'desc'
-           THEN (key_value < $6 OR (key_value = $6 AND id < $7))
-           ELSE (key_value > $6 OR (key_value = $6 AND id > $7))
+           THEN (key_value < $6 OR (key_value = $6 AND id < $7::bigint))
+           ELSE (key_value > $6 OR (key_value = $6 AND id > $7::bigint))
       END
     )
   )
 )
 SELECT id, title, release_date, overview, poster_path, backdrop_path, popularity,
-       solo_friends, couple, streaming, arr, key_value
-FROM paged
+       solo_friends, couple, streaming, arr, key_value, voted_category
+FROM paged p
 ORDER BY
   CASE WHEN $5::text = 'desc' THEN key_value END DESC NULLS LAST,
   CASE WHEN $5::text = 'asc'  THEN key_value END ASC  NULLS LAST,
-  CASE WHEN $5::text = 'desc' THEN id END DESC NULLS LAST,
-  CASE WHEN $5::text = 'asc'  THEN id END ASC  NULLS LAST
+  CASE WHEN $5::text = 'desc' THEN p.id END DESC NULLS LAST,
+  CASE WHEN $5::text = 'asc'  THEN p.id END ASC  NULLS LAST
 LIMIT $8;
 
 -- name: CountActiveMoviesFiltered :one

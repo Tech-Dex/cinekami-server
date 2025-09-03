@@ -3,8 +3,8 @@ package routes
 import (
 	"encoding/json"
 	"net/http"
+	"sort"
 	"strconv"
-	"time"
 
 	"cinekami-server/internal/deps"
 
@@ -21,64 +21,47 @@ func MovieTallies(d deps.ServerDeps) http.HandlerFunc {
 			pkghttpx.WriteError(w, r, pkghttpx.BadRequest("invalid ID", err))
 			return
 		}
-		cursor := r.URL.Query().Get("cursor")
-		limitStr := r.URL.Query().Get("limit")
-		if limitStr == "" {
-			limitStr = "20"
-		}
-		lim64, err := strconv.ParseInt(limitStr, 10, 32)
-		if err != nil || lim64 <= 0 || lim64 > 100 {
-			pkghttpx.WriteError(w, r, pkghttpx.BadRequest("invalid limit", err))
-			return
-		}
-		var curCount *int64
-		var curCat *string
-		if cursor != "" {
-			if d.Codec == nil {
-				pkghttpx.WriteError(w, r, pkghttpx.Internal("codec crypto not configured", nil))
-				return
+		fingerprint := r.Header.Get("X-Fingerprint")
+
+		// Determine voter's selected category (if any)
+		var selected string
+		if fingerprint != "" {
+			if cat, err := d.Repo.GetVoterCategory(ctx, ID, fingerprint); err == nil && cat != nil {
+				selected = *cat
 			}
-			cnt, cat, decErr := d.Codec.DecodeTalliesCursor(cursor)
-			if decErr != nil {
-				pkghttpx.WriteError(w, r, pkghttpx.BadRequest("invalid cursor", decErr))
-				return
-			}
-			curCount = &cnt
-			curCat = &cat
 		}
-		cacheKey := "movie_tallies:" + strconv.FormatInt(ID, 10) + ":cursor:" + cursor + ":limit:" + strconv.FormatInt(lim64, 10)
-		if cached, ok := d.Cache.Get(ctx, cacheKey); ok {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(cached))
-			return
-		}
-		items, err := d.Repo.ListTalliesByMoviePage(ctx, ID, curCount, curCat, int32(lim64))
+		// Fetch all tallies (including zero) for the movie
+		tallies, err := d.Repo.GetTalliesAllCategories(ctx, ID)
 		if err != nil {
 			pkghttpx.WriteError(w, r, pkghttpx.Internal("failed to get tallies", err))
 			return
 		}
-		total, err := d.Repo.CountTalliesByMovie(ctx, ID)
-		if err != nil {
-			pkghttpx.WriteError(w, r, pkghttpx.Internal("failed to count tallies", err))
-			return
+		// Sort like before: count desc, category asc
+		sort.Slice(tallies, func(i, j int) bool {
+			if tallies[i].Count == tallies[j].Count {
+				return tallies[i].Category < tallies[j].Category
+			}
+			return tallies[i].Count > tallies[j].Count
+		})
+		// Shape response with voter_choice per item
+		type item struct {
+			MovieID     int64  `json:"movie_id"`
+			Category    string `json:"category"`
+			Count       int64  `json:"count"`
+			VoterChoice bool   `json:"voter_choice"`
 		}
-		var next *string
-		if len(items) == int(lim64) && d.Codec != nil {
-			last := items[len(items)-1]
-			nextVal := d.Codec.EncodeTalliesCursor(last.Count, last.Category)
-			next = &nextVal
+		respItems := make([]item, 0, len(tallies))
+		for _, t := range tallies {
+			respItems = append(respItems, item{
+				MovieID:     t.MovieID,
+				Category:    t.Category,
+				Count:       t.Count,
+				VoterChoice: selected != "" && selected == t.Category,
+			})
 		}
-		resp := map[string]any{
-			"items": items,
-			"count": len(items),
-			"total": total,
-		}
-		if next != nil {
-			resp["next_cursor"] = *next
-		}
-		b, _ := json.Marshal(resp)
-		_ = d.Cache.Set(ctx, cacheKey, string(b), 2*time.Minute)
+		b, _ := json.Marshal(map[string]any{
+			"items": respItems,
+		})
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(b)

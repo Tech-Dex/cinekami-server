@@ -36,13 +36,14 @@ const (
 )
 
 type ActiveMoviesFilter struct {
-	SortBy    ActiveMoviesSortBy
-	SortDir   ActiveMoviesSortDir
-	MinPop    *float64
-	MaxPop    *float64
-	CursorKey *float64
-	CursorID  *int64
-	Limit     int32
+	SortBy      ActiveMoviesSortBy
+	SortDir     ActiveMoviesSortDir
+	MinPop      *float64
+	MaxPop      *float64
+	CursorKey   *float64
+	CursorID    *int64
+	Limit       int32
+	Fingerprint *string
 }
 
 // ListActiveMoviesPageFiltered returns active movies for the current month with filters and sorting.
@@ -77,15 +78,20 @@ func (r *MoviesRepo) ListActiveMoviesPageFiltered(ctx context.Context, now time.
 	if f.CursorID != nil {
 		curID = *f.CursorID
 	}
+	fp := ""
+	if f.Fingerprint != nil {
+		fp = *f.Fingerprint
+	}
 	params := store.ListActiveMoviesFilteredPageParams{
-		Column1: pgtype.Timestamptz{Time: now, Valid: true},
-		Column2: minVal,
-		Column3: maxVal,
-		Column4: string(f.SortBy),
-		Column5: string(f.SortDir),
-		Column6: curKey,
-		ID:      curID,
-		Limit:   f.Limit,
+		Column1:     pgtype.Timestamptz{Time: now, Valid: true},
+		Column2:     minVal,
+		Column3:     maxVal,
+		Column4:     string(f.SortBy),
+		Column5:     string(f.SortDir),
+		Column6:     curKey,
+		Column7:     curID,
+		Limit:       f.Limit,
+		Fingerprint: fp,
 	}
 	rows, err := r.q.ListActiveMoviesFilteredPage(ctx, params)
 	if err != nil {
@@ -94,6 +100,11 @@ func (r *MoviesRepo) ListActiveMoviesPageFiltered(ctx context.Context, now time.
 	out := make([]model.Movie, 0, len(rows))
 	var lastKey float64
 	for _, rrow := range rows {
+		var votedPtr *string
+		if s := categoryToString(rrow.VotedCategory); s != "" {
+			v := s
+			votedPtr = &v
+		}
 		mv := model.Movie{
 			ID:           rrow.ID,
 			Title:        rrow.Title,
@@ -108,6 +119,7 @@ func (r *MoviesRepo) ListActiveMoviesPageFiltered(ctx context.Context, now time.
 				model.CategoryStreaming:   rrow.Streaming,
 				model.CategoryArr:         rrow.Arr,
 			},
+			VotedCategory: votedPtr,
 		}
 		out = append(out, mv)
 		lastKey = anyToFloat64(rrow.KeyValue)

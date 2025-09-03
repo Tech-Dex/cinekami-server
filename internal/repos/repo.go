@@ -65,6 +65,12 @@ func (r *Repository) ListTalliesByMoviePage(ctx context.Context, movieID int64, 
 func (r *Repository) CountTalliesByMovie(ctx context.Context, movieID int64) (int64, error) {
 	return r.Tallies.CountTalliesByMovie(ctx, movieID)
 }
+func (r *Repository) GetVoterCategory(ctx context.Context, movieID int64, fingerprint string) (*string, error) {
+	return r.Tallies.GetVoterCategory(ctx, movieID, fingerprint)
+}
+func (r *Repository) GetTalliesAllCategories(ctx context.Context, movieID int64) ([]model.Tally, error) {
+	return r.Tallies.GetTalliesAllCategories(ctx, movieID)
+}
 
 func (r *Repository) SnapshotMonth(ctx context.Context, year int, month time.Month) error {
 	return r.Snapshots.SnapshotMonth(ctx, year, month)

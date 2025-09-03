@@ -89,6 +89,25 @@ func (q *Queries) GetTalliesForMovies(ctx context.Context, dollar_1 []int64) ([]
 	return items, nil
 }
 
+const GetVoterCategoryByMovieAndFingerprint = `-- name: GetVoterCategoryByMovieAndFingerprint :one
+SELECT v.category::text AS category
+FROM votes v
+JOIN voters vr ON vr.id = v.voter_id
+WHERE v.movie_id = $1 AND vr.fingerprint = $2
+`
+
+type GetVoterCategoryByMovieAndFingerprintParams struct {
+	MovieID     int64  `json:"movie_id"`
+	Fingerprint string `json:"fingerprint"`
+}
+
+func (q *Queries) GetVoterCategoryByMovieAndFingerprint(ctx context.Context, arg GetVoterCategoryByMovieAndFingerprintParams) (string, error) {
+	row := q.db.QueryRow(ctx, GetVoterCategoryByMovieAndFingerprint, arg.MovieID, arg.Fingerprint)
+	var category string
+	err := row.Scan(&category)
+	return category, err
+}
+
 const IncrementTally = `-- name: IncrementTally :exec
 INSERT INTO vote_tallies (movie_id, category, count)
 VALUES ($1, $2, 1)

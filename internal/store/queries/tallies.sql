@@ -34,3 +34,9 @@ FROM mids m
 CROSS JOIN cats c
 LEFT JOIN vote_tallies t ON t.movie_id = m.movie_id AND t.category = c.category
 ORDER BY m.movie_id, c.category;
+
+-- name: GetVoterCategoryByMovieAndFingerprint :one
+SELECT v.category::text AS category
+FROM votes v
+JOIN voters vr ON vr.id = v.voter_id
+WHERE v.movie_id = $1 AND vr.fingerprint = $2;
