@@ -102,6 +102,39 @@ func (q *Queries) GetSnapshotsByMonth(ctx context.Context, month string) ([]Snap
 	return items, nil
 }
 
+const ListAvailableSnapshotYearMonths = `-- name: ListAvailableSnapshotYearMonths :many
+SELECT (split_part(month, '-', 1))::int AS year,
+       (split_part(month, '-', 2))::int AS month
+FROM snapshots
+GROUP BY 1, 2
+ORDER BY year DESC, month DESC
+`
+
+type ListAvailableSnapshotYearMonthsRow struct {
+	Year  int32 `json:"year"`
+	Month int32 `json:"month"`
+}
+
+func (q *Queries) ListAvailableSnapshotYearMonths(ctx context.Context) ([]ListAvailableSnapshotYearMonthsRow, error) {
+	rows, err := q.db.Query(ctx, ListAvailableSnapshotYearMonths)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAvailableSnapshotYearMonthsRow{}
+	for rows.Next() {
+		var i ListAvailableSnapshotYearMonthsRow
+		if err := rows.Scan(&i.Year, &i.Month); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const ListSnapshotsByMonthFilteredPage = `-- name: ListSnapshotsByMonthFilteredPage :many
 WITH s AS (
   SELECT st.month, st.movie_id, st.tallies, st.closed_at, m.popularity, m.title, m.release_date, m.overview, m.poster_path, m.backdrop_path

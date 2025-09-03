@@ -116,8 +116,7 @@ func MovieVote(d deps.ServerDeps) http.HandlerFunc {
 			voted = *cat
 		}
 		// Invalidate caches
-		_ = d.Cache.Delete(ctx, "movie_tallies:"+strconv.FormatInt(ID, 10))
-		_ = d.Cache.Delete(ctx, "active_movies:"+time.Now().UTC().Format("2006-01"))
+		_ = d.Cache.DeletePrefix(ctx, "active_movies:"+time.Now().UTC().Format("2006-01"))
 		pkghttpx.WriteJSON(w, http.StatusOK, voteResp{Inserted: inserted, Message: func() string {
 			if inserted {
 				return "vote recorded"

@@ -29,6 +29,7 @@ func (s *Server) Router() http.Handler {
 	mux.HandleFunc("GET /movies/active", routes.MoviesActive(sd))
 	mux.HandleFunc("GET /movies/{id}/tallies", routes.MovieTallies(sd))
 	mux.HandleFunc("POST /movies/{id}/votes", routes.MovieVote(sd))
+	mux.HandleFunc("GET /snapshots/available", routes.SnapshotsAvailable(sd))
 	mux.HandleFunc("GET /snapshots/{year}/{month}", routes.Snapshots(sd))
 
 	return withCorrelationID(withLogging(mux))

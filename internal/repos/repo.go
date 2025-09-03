@@ -92,3 +92,7 @@ func (r *Repository) ListSnapshotsByMonthFiltered(ctx context.Context, f Snapsho
 func (r *Repository) CountSnapshotsByMonthFiltered(ctx context.Context, month string, minPop, maxPop *float64) (int64, error) {
 	return r.Snapshots.CountSnapshotsByMonthFiltered(ctx, month, minPop, maxPop)
 }
+
+func (r *Repository) ListAvailableYearMonths(ctx context.Context) ([]AvailableMonths, error) {
+	return r.Snapshots.ListAvailableYearMonths(ctx)
+}

@@ -152,3 +152,28 @@ func Snapshots(d deps.ServerDeps) http.HandlerFunc {
 		_, _ = w.Write(b)
 	}
 }
+
+// SnapshotsAvailable handles GET /snapshots/available
+func SnapshotsAvailable(d deps.ServerDeps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		cacheKey := "snapshots:available"
+		if cached, ok := d.Cache.Get(ctx, cacheKey); ok {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(cached))
+			return
+		}
+		rows, err := d.Repo.ListAvailableYearMonths(ctx)
+		if err != nil {
+			pkghttpx.WriteError(w, r, pkghttpx.Internal("failed to list available months", err))
+			return
+		}
+		resp := map[string]any{"items": rows}
+		b, _ := json.Marshal(resp)
+		_ = d.Cache.Set(ctx, cacheKey, string(b), 24*time.Hour)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(b)
+	}
+}

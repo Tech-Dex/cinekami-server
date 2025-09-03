@@ -52,3 +52,22 @@ func (v *ValkeyClient) Delete(ctx context.Context, key string) error {
 	res := v.c.Do(ctx, v.c.B().Del().Key(key).Build())
 	return res.Error()
 }
+
+func (v *ValkeyClient) DeletePrefix(ctx context.Context, prefix string) error {
+	pattern := prefix + "*"
+	res := v.c.Do(ctx, v.c.B().Keys().Pattern(pattern).Build())
+	if err := res.Error(); err != nil {
+		return err
+	}
+	keys, err := res.AsStrSlice()
+	if err != nil {
+		return err
+	}
+	var lastErr error
+	for _, k := range keys {
+		if err := v.Delete(ctx, k); err != nil {
+			lastErr = err
+		}
+	}
+	return lastErr
+}

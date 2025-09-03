@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"sort"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -199,4 +200,38 @@ func (r *SnapshotsRepo) ListSnapshotsByMonthPage(ctx context.Context, month stri
 
 func (r *SnapshotsRepo) CountSnapshotsByMonth(ctx context.Context, month string) (int64, error) {
 	return r.q.CountSnapshotsByMonth(ctx, month)
+}
+
+type AvailableMonths struct {
+	Year   int   `json:"year"`
+	Months []int `json:"months"`
+}
+
+func (r *SnapshotsRepo) ListAvailableYearMonths(ctx context.Context) ([]AvailableMonths, error) {
+	rows, err := r.q.ListAvailableSnapshotYearMonths(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// Group by year preserving year order (desc from SQL)
+	yearOrder := []int{}
+	monthsMap := map[int]map[int]struct{}{}
+	for _, row := range rows {
+		y := int(row.Year)
+		m := int(row.Month)
+		if _, ok := monthsMap[y]; !ok {
+			monthsMap[y] = map[int]struct{}{}
+			yearOrder = append(yearOrder, y)
+		}
+		monthsMap[y][m] = struct{}{}
+	}
+	out := make([]AvailableMonths, 0, len(yearOrder))
+	for _, y := range yearOrder {
+		ms := make([]int, 0, len(monthsMap[y]))
+		for m := range monthsMap[y] {
+			ms = append(ms, m)
+		}
+		sort.Ints(ms) // ascending months for FE convenience
+		out = append(out, AvailableMonths{Year: y, Months: ms})
+	}
+	return out, nil
 }

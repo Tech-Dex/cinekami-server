@@ -79,3 +79,10 @@ JOIN movies m ON m.id = st.movie_id
 WHERE st.month = $1
   AND ($2::float8 IS NULL OR m.popularity >= $2)
   AND ($3::float8 IS NULL OR m.popularity <= $3);
+
+-- name: ListAvailableSnapshotYearMonths :many
+SELECT (split_part(month, '-', 1))::int AS year,
+       (split_part(month, '-', 2))::int AS month
+FROM snapshots
+GROUP BY 1, 2
+ORDER BY year DESC, month DESC;

@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 )
@@ -10,6 +11,7 @@ type Cache interface {
 	Get(ctx context.Context, key string) (string, bool)
 	Set(ctx context.Context, key string, val string, ttl time.Duration) error
 	Delete(ctx context.Context, key string) error
+	DeletePrefix(ctx context.Context, prefix string) error
 }
 
 type InMemoryCache struct {
@@ -54,6 +56,17 @@ func (c *InMemoryCache) Set(_ context.Context, key string, val string, ttl time.
 func (c *InMemoryCache) Delete(_ context.Context, key string) error {
 	c.mu.Lock()
 	delete(c.data, key)
+	c.mu.Unlock()
+	return nil
+}
+
+func (c *InMemoryCache) DeletePrefix(_ context.Context, prefix string) error {
+	c.mu.Lock()
+	for k := range c.data {
+		if strings.HasPrefix(k, prefix) {
+			delete(c.data, k)
+		}
+	}
 	c.mu.Unlock()
 	return nil
 }
