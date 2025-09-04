@@ -3,10 +3,13 @@ package repos
 import (
 	"context"
 	"math"
+	"net/url"
+	"sync/atomic"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/sync/errgroup"
 
 	"cinekami-server/internal/model"
 	"cinekami-server/internal/store"
@@ -120,6 +123,8 @@ func (r *MoviesRepo) ListActiveMoviesPageFiltered(ctx context.Context, now time.
 				model.CategoryArr:         rrow.Arr,
 			},
 			VotedCategory: votedPtr,
+			ImdbURL:       textPtr(rrow.ImdbUrl),
+			CinemagiaURL:  textPtr(rrow.CinemagiaUrl),
 		}
 		out = append(out, mv)
 		lastKey = anyToFloat64(rrow.KeyValue)
@@ -156,12 +161,71 @@ func (r *MoviesRepo) UpsertMovies(ctx context.Context, movies []pkgtmdb.Movie) (
 			PosterPath:   textVal(m.PosterPath),
 			BackdropPath: textVal(m.BackdropPath),
 			Popularity:   pgtype.Float8{Float64: m.Popularity, Valid: true},
+			ImdbUrl:      pgtype.Text{Valid: false},
+			CinemagiaUrl: pgtype.Text{Valid: false},
 		}); err != nil {
 			return count, err
 		}
 		count++
 	}
 	return count, nil
+}
+
+// UpsertMoviesFromTMDB upserts movies and fetches external IDs from TMDb client to populate imdb and cinemagia URLs.
+func (r *MoviesRepo) UpsertMoviesFromTMDB(ctx context.Context, movies []pkgtmdb.Movie, c *pkgtmdb.Client) (int, error) {
+	// concurrency limit to avoid hammering TMDb or DB
+	const concurrency = 10
+	var count int64
+	g, ctx := errgroup.WithContext(ctx)
+	sem := make(chan struct{}, concurrency)
+
+	for _, m := range movies {
+		m := m
+		select {
+		case <-ctx.Done():
+			break
+		default:
+		}
+		sem <- struct{}{}
+		g.Go(func() error {
+			defer func() { <-sem }()
+
+			// fetch external ids if client present
+			imdbURL := ""
+			cinemagiaURL := ""
+			if c != nil {
+				if ext, err := c.GetExternalIDs(m.TMDBID); err == nil {
+					if ext.ImdbID != "" {
+						imdbURL = "https://www.imdb.com/title/" + ext.ImdbID
+						// use URL-escaped title for Cinemagia search, wait for Cinemagia to provide a better solution
+						cinemagiaURL = "https://www.cinemagia.ro/cauta/?q=" + url.QueryEscape(m.Title)
+					}
+				}
+			}
+
+			if err := r.q.UpsertMovie(ctx, store.UpsertMovieParams{
+				ID:           int64(m.TMDBID),
+				Title:        m.Title,
+				ReleaseDate:  pgtype.Date{Time: m.ReleaseDate, Valid: true},
+				Overview:     textVal(m.Overview),
+				PosterPath:   textVal(m.PosterPath),
+				BackdropPath: textVal(m.BackdropPath),
+				Popularity:   pgtype.Float8{Float64: m.Popularity, Valid: true},
+				ImdbUrl:      textVal(imdbURL),
+				CinemagiaUrl: textVal(cinemagiaURL),
+			}); err != nil {
+				return err
+			}
+			atomic.AddInt64(&count, 1)
+			return nil
+		})
+	}
+
+	// wait for remaining goroutines to finish
+	if err := g.Wait(); err != nil {
+		return int(count), err
+	}
+	return int(count), nil
 }
 
 func (r *MoviesRepo) HasMovies(ctx context.Context) (bool, error) {

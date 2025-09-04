@@ -156,6 +156,8 @@ func (r *SnapshotsRepo) ListSnapshotsByMonthFiltered(ctx context.Context, f Snap
 			PosterPath:   textPtr(rr.PosterPath),
 			BackdropPath: textPtr(rr.BackdropPath),
 			Popularity:   rr.Popularity.Float64,
+			ImdbURL:      textPtr(rr.ImdbUrl),
+			CinemagiaURL: textPtr(rr.CinemagiaUrl),
 		})
 		lastKey = anyToFloat64(rr.KeyValue)
 	}

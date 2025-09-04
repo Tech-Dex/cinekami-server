@@ -75,7 +75,7 @@ func (q *Queries) HasAnyMovies(ctx context.Context) (bool, error) {
 
 const ListActiveMoviesFilteredPage = `-- name: ListActiveMoviesFilteredPage :many
 WITH base AS (
-  SELECT id, title, release_date, overview, poster_path, backdrop_path, popularity
+  SELECT id, title, release_date, overview, poster_path, backdrop_path, popularity, imdb_url, cinemagia_url
   FROM movies
   WHERE release_date >= date_trunc('month', $1::timestamptz)::date
     AND release_date <= (date_trunc('month', $1::timestamptz)::date + interval '1 month - 1 second')
@@ -91,10 +91,10 @@ WITH base AS (
   FROM vote_tallies
   GROUP BY movie_id
 ), joined AS (
-  SELECT b.id, b.title, b.release_date, b.overview, b.poster_path, b.backdrop_path, b.popularity, COALESCE(t.solo_friends,0) AS solo_friends, COALESCE(t.couple,0) AS couple, COALESCE(t.streaming,0) AS streaming, COALESCE(t.arr,0) AS arr
+  SELECT b.id, b.title, b.release_date, b.overview, b.poster_path, b.backdrop_path, b.popularity, b.imdb_url, b.cinemagia_url, COALESCE(t.solo_friends,0) AS solo_friends, COALESCE(t.couple,0) AS couple, COALESCE(t.streaming,0) AS streaming, COALESCE(t.arr,0) AS arr
   FROM base b LEFT JOIN t ON t.movie_id = b.id
 ), keyed AS (
-  SELECT id, title, release_date, overview, poster_path, backdrop_path, popularity, solo_friends, couple, streaming, arr, CASE
+  SELECT id, title, release_date, overview, poster_path, backdrop_path, popularity, imdb_url, cinemagia_url, solo_friends, couple, streaming, arr, CASE
       WHEN $4::text = 'popularity' THEN popularity
       WHEN $4::text = 'release_date' THEN extract(epoch from release_date)
       WHEN $4::text = 'solo_friends' THEN solo_friends::double precision
@@ -105,12 +105,12 @@ WITH base AS (
     END AS key_value
   FROM joined
 ), voted AS (
-  SELECT j.id, j.title, j.release_date, j.overview, j.poster_path, j.backdrop_path, j.popularity, j.solo_friends, j.couple, j.streaming, j.arr, j.key_value, COALESCE(v.category::text, '') AS voted_category
+  SELECT j.id, j.title, j.release_date, j.overview, j.poster_path, j.backdrop_path, j.popularity, j.imdb_url, j.cinemagia_url, j.solo_friends, j.couple, j.streaming, j.arr, j.key_value, COALESCE(v.category::text, '') AS voted_category
   FROM keyed j
   LEFT JOIN voters vr ON vr.fingerprint = $9
   LEFT JOIN votes v ON v.movie_id = j.id AND v.voter_id = vr.id
 ), paged AS (
-  SELECT id, title, release_date, overview, poster_path, backdrop_path, popularity, solo_friends, couple, streaming, arr, key_value, voted_category FROM voted
+  SELECT id, title, release_date, overview, poster_path, backdrop_path, popularity, imdb_url, cinemagia_url, solo_friends, couple, streaming, arr, key_value, voted_category FROM voted
   WHERE (
     $6::float8 IS NULL OR (
       CASE WHEN $5::text = 'desc'
@@ -120,7 +120,7 @@ WITH base AS (
     )
   )
 )
-SELECT id, title, release_date, overview, poster_path, backdrop_path, popularity,
+SELECT id, title, release_date, overview, poster_path, backdrop_path, popularity, imdb_url, cinemagia_url,
        solo_friends, couple, streaming, arr, key_value, voted_category
 FROM paged p
 ORDER BY
@@ -152,6 +152,8 @@ type ListActiveMoviesFilteredPageRow struct {
 	PosterPath    pgtype.Text   `json:"poster_path"`
 	BackdropPath  pgtype.Text   `json:"backdrop_path"`
 	Popularity    pgtype.Float8 `json:"popularity"`
+	ImdbUrl       pgtype.Text   `json:"imdb_url"`
+	CinemagiaUrl  pgtype.Text   `json:"cinemagia_url"`
 	SoloFriends   int64         `json:"solo_friends"`
 	Couple        int64         `json:"couple"`
 	Streaming     int64         `json:"streaming"`
@@ -187,6 +189,8 @@ func (q *Queries) ListActiveMoviesFilteredPage(ctx context.Context, arg ListActi
 			&i.PosterPath,
 			&i.BackdropPath,
 			&i.Popularity,
+			&i.ImdbUrl,
+			&i.CinemagiaUrl,
 			&i.SoloFriends,
 			&i.Couple,
 			&i.Streaming,
@@ -205,7 +209,7 @@ func (q *Queries) ListActiveMoviesFilteredPage(ctx context.Context, arg ListActi
 }
 
 const ListActiveMoviesPage = `-- name: ListActiveMoviesPage :many
-SELECT id, title, release_date, overview, poster_path, backdrop_path, popularity
+SELECT id, title, release_date, overview, poster_path, backdrop_path, popularity, imdb_url, cinemagia_url
 FROM movies
 WHERE release_date >= date_trunc('month', $1::timestamptz)::date
   AND release_date <= (date_trunc('month', $1::timestamptz)::date + interval '1 month - 1 second')
@@ -232,6 +236,8 @@ type ListActiveMoviesPageRow struct {
 	PosterPath   pgtype.Text   `json:"poster_path"`
 	BackdropPath pgtype.Text   `json:"backdrop_path"`
 	Popularity   pgtype.Float8 `json:"popularity"`
+	ImdbUrl      pgtype.Text   `json:"imdb_url"`
+	CinemagiaUrl pgtype.Text   `json:"cinemagia_url"`
 }
 
 func (q *Queries) ListActiveMoviesPage(ctx context.Context, arg ListActiveMoviesPageParams) ([]ListActiveMoviesPageRow, error) {
@@ -256,6 +262,8 @@ func (q *Queries) ListActiveMoviesPage(ctx context.Context, arg ListActiveMovies
 			&i.PosterPath,
 			&i.BackdropPath,
 			&i.Popularity,
+			&i.ImdbUrl,
+			&i.CinemagiaUrl,
 		); err != nil {
 			return nil, err
 		}
@@ -296,8 +304,8 @@ func (q *Queries) ListMovieIDsByMonth(ctx context.Context, dollar_1 pgtype.Date)
 }
 
 const UpsertMovie = `-- name: UpsertMovie :exec
-INSERT INTO movies (id, title, release_date, overview, poster_path, backdrop_path, popularity)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO movies (id, title, release_date, overview, poster_path, backdrop_path, popularity, imdb_url, cinemagia_url)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 ON CONFLICT (id) DO UPDATE SET
   title = EXCLUDED.title,
   release_date = EXCLUDED.release_date,
@@ -305,6 +313,8 @@ ON CONFLICT (id) DO UPDATE SET
   poster_path = EXCLUDED.poster_path,
   backdrop_path = EXCLUDED.backdrop_path,
   popularity = EXCLUDED.popularity,
+  imdb_url = EXCLUDED.imdb_url,
+  cinemagia_url = EXCLUDED.cinemagia_url,
   updated_at = now()
 `
 
@@ -316,6 +326,8 @@ type UpsertMovieParams struct {
 	PosterPath   pgtype.Text   `json:"poster_path"`
 	BackdropPath pgtype.Text   `json:"backdrop_path"`
 	Popularity   pgtype.Float8 `json:"popularity"`
+	ImdbUrl      pgtype.Text   `json:"imdb_url"`
+	CinemagiaUrl pgtype.Text   `json:"cinemagia_url"`
 }
 
 func (q *Queries) UpsertMovie(ctx context.Context, arg UpsertMovieParams) error {
@@ -327,6 +339,8 @@ func (q *Queries) UpsertMovie(ctx context.Context, arg UpsertMovieParams) error 
 		arg.PosterPath,
 		arg.BackdropPath,
 		arg.Popularity,
+		arg.ImdbUrl,
+		arg.CinemagiaUrl,
 	)
 	return err
 }

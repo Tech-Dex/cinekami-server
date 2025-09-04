@@ -39,6 +39,9 @@ func (r *Repository) ListActiveMoviesPage(ctx context.Context, now time.Time, cu
 func (r *Repository) UpsertMovies(ctx context.Context, movies []pkgtmdb.Movie) (int, error) {
 	return r.Movies.UpsertMovies(ctx, movies)
 }
+func (r *Repository) UpsertMoviesFromTMDB(ctx context.Context, movies []pkgtmdb.Movie, c *pkgtmdb.Client) (int, error) {
+	return r.Movies.UpsertMoviesFromTMDB(ctx, movies, c)
+}
 func (r *Repository) HasMovies(ctx context.Context) (bool, error) { return r.Movies.HasMovies(ctx) }
 func (r *Repository) CountActiveMovies(ctx context.Context, now time.Time) (int64, error) {
 	return r.Movies.CountActiveMovies(ctx, now)

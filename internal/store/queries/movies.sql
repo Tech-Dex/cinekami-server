@@ -1,6 +1,6 @@
 -- name: UpsertMovie :exec
-INSERT INTO movies (id, title, release_date, overview, poster_path, backdrop_path, popularity)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO movies (id, title, release_date, overview, poster_path, backdrop_path, popularity, imdb_url, cinemagia_url)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 ON CONFLICT (id) DO UPDATE SET
   title = EXCLUDED.title,
   release_date = EXCLUDED.release_date,
@@ -8,10 +8,12 @@ ON CONFLICT (id) DO UPDATE SET
   poster_path = EXCLUDED.poster_path,
   backdrop_path = EXCLUDED.backdrop_path,
   popularity = EXCLUDED.popularity,
+  imdb_url = EXCLUDED.imdb_url,
+  cinemagia_url = EXCLUDED.cinemagia_url,
   updated_at = now();
 
 -- name: ListActiveMoviesPage :many
-SELECT id, title, release_date, overview, poster_path, backdrop_path, popularity
+SELECT id, title, release_date, overview, poster_path, backdrop_path, popularity, imdb_url, cinemagia_url
 FROM movies
 WHERE release_date >= date_trunc('month', $1::timestamptz)::date
   AND release_date <= (date_trunc('month', $1::timestamptz)::date + interval '1 month - 1 second')
@@ -46,7 +48,7 @@ ORDER BY id;
 
 -- name: ListActiveMoviesFilteredPage :many
 WITH base AS (
-  SELECT id, title, release_date, overview, poster_path, backdrop_path, popularity
+  SELECT id, title, release_date, overview, poster_path, backdrop_path, popularity, imdb_url, cinemagia_url
   FROM movies
   WHERE release_date >= date_trunc('month', $1::timestamptz)::date
     AND release_date <= (date_trunc('month', $1::timestamptz)::date + interval '1 month - 1 second')
@@ -91,7 +93,7 @@ WITH base AS (
     )
   )
 )
-SELECT id, title, release_date, overview, poster_path, backdrop_path, popularity,
+SELECT id, title, release_date, overview, poster_path, backdrop_path, popularity, imdb_url, cinemagia_url,
        solo_friends, couple, streaming, arr, key_value, voted_category
 FROM paged p
 ORDER BY

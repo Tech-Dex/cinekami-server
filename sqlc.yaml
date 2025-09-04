@@ -6,6 +6,7 @@ sql:
       - internal/migrate/migrations/0002_indexes.up.sql
       - internal/migrate/migrations/0003_popularity_idx.up.sql
       - internal/migrate/migrations/0004_votes_unique_movie_voter.up.sql
+      - internal/migrate/migrations/0005_add_external_urls.up.sql
     queries:
       - internal/store/queries
     gen:

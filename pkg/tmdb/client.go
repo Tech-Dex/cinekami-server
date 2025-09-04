@@ -32,13 +32,20 @@ type discoverResp struct {
 }
 
 type discoverItem struct {
-	ID           int32   `json:"id"`
-	Title        string  `json:"title"`
-	ReleaseDate  string  `json:"release_date"`
-	Overview     string  `json:"overview"`
-	PosterPath   string  `json:"poster_path"`
-	BackdropPath string  `json:"backdrop_path"`
-	Popularity   float64 `json:"popularity"`
+	ID               int32   `json:"id"`
+	Title            string  `json:"title"`
+	ReleaseDate      string  `json:"release_date"`
+	Overview         string  `json:"overview"`
+	PosterPath       string  `json:"poster_path"`
+	BackdropPath     string  `json:"backdrop_path"`
+	Popularity       float64 `json:"popularity"`
+	OriginalLanguage string  `json:"original_language"`
+	Adult            bool    `json:"adult"`
+}
+
+type ExternalIDs struct {
+	ImdbID string `json:"imdb_id"`
+	// other fields omitted
 }
 
 func New(apiKey string) *Client {
@@ -54,6 +61,25 @@ func (c *Client) DiscoverByReleaseWindow(start, end time.Time, region, language 
 	var out []Movie
 	page := 1
 	done := false
+
+	// set of original_language codes typically associated with Indian films
+	indianLangs := map[string]struct{}{
+		"hi": {}, // Hindi
+		"ta": {}, // Tamil
+		"te": {}, // Telugu
+		"ml": {}, // Malayalam
+		"kn": {}, // Kannada
+		"mr": {}, // Marathi
+		"bn": {}, // Bengali
+		"gu": {}, // Gujarati
+		"pa": {}, // Punjabi
+		"or": {}, // Odia
+		"as": {}, // Assamese
+		"ne": {}, // Nepali (sometimes)
+		"sd": {}, // Sindhi
+		"ur": {}, // Urdu (also used)
+	}
+
 	for {
 		u, _ := url.Parse(c.BaseURL + "/discover/movie")
 		q := u.Query()
@@ -91,6 +117,17 @@ func (c *Client) DiscoverByReleaseWindow(start, end time.Time, region, language 
 				if it.ReleaseDate == "" {
 					continue
 				}
+
+				// Skip movies whose original language indicates Indian production
+				if _, ok := indianLangs[it.OriginalLanguage]; ok {
+					continue
+				}
+
+				// Skip adult movies
+				if it.Adult {
+					continue
+				}
+
 				if it.Popularity < 3.0 {
 					// break early on low-popularity items
 					done = true
@@ -115,6 +152,31 @@ func (c *Client) DiscoverByReleaseWindow(start, end time.Time, region, language 
 		if done {
 			break
 		}
+	}
+	return out, nil
+}
+
+// GetExternalIDs fetches external IDs for a movie (imdb_id, etc.).
+func (c *Client) GetExternalIDs(movieID int32) (ExternalIDs, error) {
+	var out ExternalIDs
+	if c.APIKey == "" {
+		return out, fmt.Errorf("missing TMDB API key")
+	}
+	u, _ := url.Parse(fmt.Sprintf(c.BaseURL+"/movie/%d/external_ids", movieID))
+	q := u.Query()
+	q.Set("api_key", c.APIKey)
+	u.RawQuery = q.Encode()
+	req, _ := http.NewRequest(http.MethodGet, u.String(), nil)
+	resp, err := c.Client.Do(req)
+	if err != nil {
+		return out, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return out, fmt.Errorf("tmdb external_ids status %d", resp.StatusCode)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return out, err
 	}
 	return out, nil
 }

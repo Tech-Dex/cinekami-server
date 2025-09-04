@@ -20,6 +20,8 @@ type Movie struct {
 	Popularity   pgtype.Float8      `json:"popularity"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	ImdbUrl      pgtype.Text        `json:"imdb_url"`
+	CinemagiaUrl pgtype.Text        `json:"cinemagia_url"`
 }
 
 type Snapshot struct {

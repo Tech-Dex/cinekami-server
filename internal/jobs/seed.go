@@ -33,7 +33,7 @@ func SeedTMDBIfEmpty(ctx context.Context, r *repos.Repository, c *pkgtmdb.Client
 	if err != nil {
 		return err
 	}
-	n, err := r.UpsertMovies(ctx, movies)
+	n, err := r.UpsertMoviesFromTMDB(ctx, movies, c)
 	if err != nil {
 		return err
 	}

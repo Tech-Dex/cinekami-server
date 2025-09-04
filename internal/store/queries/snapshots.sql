@@ -29,21 +29,21 @@ SELECT COUNT(*) FROM snapshots WHERE month = $1;
 
 -- name: ListSnapshotsByMonthFilteredPage :many
 WITH s AS (
-  SELECT st.month, st.movie_id, st.tallies, st.closed_at, m.popularity, m.title, m.release_date, m.overview, m.poster_path, m.backdrop_path
+  SELECT st.month, st.movie_id, st.tallies, st.closed_at, m.popularity, m.title, m.release_date, m.overview, m.poster_path, m.backdrop_path, m.imdb_url, m.cinemagia_url
   FROM snapshots st
   JOIN movies m ON m.id = st.movie_id
   WHERE st.month = $1
     AND ($2::float8 IS NULL OR m.popularity >= $2)
     AND ($3::float8 IS NULL OR m.popularity <= $3)
 ), exploded AS (
-  SELECT month, movie_id, closed_at, popularity, title, release_date, overview, poster_path, backdrop_path,
+  SELECT month, movie_id, closed_at, popularity, title, release_date, overview, poster_path, backdrop_path, imdb_url, cinemagia_url,
     COALESCE((tallies ->> 'solo_friends')::bigint, 0) AS solo_friends,
     COALESCE((tallies ->> 'couple')::bigint, 0) AS couple,
     COALESCE((tallies ->> 'streaming')::bigint, 0) AS streaming,
     COALESCE((tallies ->> 'arr')::bigint, 0) AS arr
   FROM s
 ), keyed AS (
-  SELECT *, CASE
+  SELECT month, movie_id, closed_at, popularity, title, release_date, overview, poster_path, backdrop_path, imdb_url, cinemagia_url, solo_friends, couple, streaming, arr, CASE
     WHEN $4::text = 'popularity' THEN popularity
     WHEN $4::text = 'release_date' THEN extract(epoch from release_date)
     WHEN $4::text = 'solo_friends' THEN solo_friends::double precision
@@ -63,7 +63,7 @@ WITH s AS (
     )
   )
 )
-SELECT movie_id, month, closed_at, popularity, title, release_date, overview, poster_path, backdrop_path, solo_friends, couple, streaming, arr, key_value
+SELECT movie_id, month, closed_at, popularity, title, release_date, overview, poster_path, backdrop_path, imdb_url, cinemagia_url, solo_friends, couple, streaming, arr, key_value
 FROM paged
 ORDER BY
   CASE WHEN $5::text = 'desc' THEN key_value END DESC NULLS LAST,

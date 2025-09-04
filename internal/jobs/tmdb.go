@@ -49,7 +49,7 @@ func StartTMDBSync(ctx context.Context, r *repos.Repository, c *pkgtmdb.Client, 
 				if err != nil {
 					log.Error().Err(err).Msg("tmdb discover failed")
 				} else {
-					if n, e := r.UpsertMovies(ctx, movies); e != nil {
+					if n, e := r.UpsertMoviesFromTMDB(ctx, movies, c); e != nil {
 						log.Error().Err(e).Msg("upsert movies failed")
 					} else {
 						log.Info().Int("count", n).Msg("tmdb weekly sync upserted movies")
@@ -85,7 +85,7 @@ func StartTMDBSyncTest(ctx context.Context, r *repos.Repository, c *pkgtmdb.Clie
 				if err != nil {
 					log.Error().Err(err).Msg("tmdb test discover failed")
 				} else {
-					if n, e := r.UpsertMovies(ctx, movies); e != nil {
+					if n, e := r.UpsertMoviesFromTMDB(ctx, movies, c); e != nil {
 						log.Error().Err(e).Msg("upsert movies failed (test)")
 					} else {
 						log.Info().Int("count", n).Msg("tmdb test sync upserted movies")

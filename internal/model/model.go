@@ -27,6 +27,8 @@ type Movie struct {
 	Popularity    float64          `json:"popularity"`
 	Tallies       map[string]int64 `json:"tallies,omitempty"`
 	VotedCategory *string          `json:"voted_category,omitempty"`
+	ImdbURL       *string          `json:"imdb_url,omitempty"`
+	CinemagiaURL  *string          `json:"cinemagia_url,omitempty"`
 }
 
 type Tally struct {
@@ -47,4 +49,6 @@ type Snapshot struct {
 	PosterPath   *string   `json:"poster_path,omitempty"`
 	BackdropPath *string   `json:"backdrop_path,omitempty"`
 	Popularity   float64   `json:"popularity,omitempty"`
+	ImdbURL      *string   `json:"imdb_url,omitempty"`
+	CinemagiaURL *string   `json:"cinemagia_url,omitempty"`
 }
